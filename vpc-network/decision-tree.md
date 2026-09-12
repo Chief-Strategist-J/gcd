@@ -1,6 +1,6 @@
 # VPC Networks & Subnets: Decision Trees
 
-This guide provides visual decision trees (Mermaid flowcharts & ASCII text decision paths) for selecting VPC network modes, sizing subnets, planning non-downtime CIDR expansions, external IP strategies, and BYOIP.
+This guide provides visual decision trees (Mermaid flowcharts & ASCII text decision paths) for selecting VPC network modes, sizing subnets, planning non-downtime CIDR expansions, external IP strategies, BYOIP, custom routing, and stateful firewall rule targeting.
 
 ---
 
@@ -117,4 +117,23 @@ flowchart TD
 
     style GCP_DNS fill:#34A853,color:#fff
     style DNS_FAIL fill:#EA4335,color:#fff
+```
+
+---
+
+## 6. Firewall Rule Target & Security Targeting Strategy Decision Tree
+
+```mermaid
+flowchart TD
+    FW_START["Determine Firewall Rule Scope"] --> TARGET_SCOPE{"Which VM instances should the rule apply to?"}
+
+    TARGET_SCOPE -- "All VMs in VPC Network" --> ALL_VMS["Target: All Instances in Network<br/>- Leave target-tags and target-service-accounts blank<br/>- Global baseline security policy"]
+    TARGET_SCOPE -- "Specific Group of VMs by Function" --> SEC_AUTH{"Do you require RBAC IAM identity enforcement?"}
+    
+    SEC_AUTH -- "No (Simple operational grouping)" --> NET_TAGS["Target Network Tags<br/>- e.g., --target-tags=web-server,db-server<br/>- Flexible string tags assigned to instances"]
+    SEC_AUTH -- "Yes (Strict enterprise security & RBAC)" --> SA_TARGETS["Target Service Accounts<br/>- e.g., --target-service-accounts=sa-web@project.iam.gserviceaccount.com<br/>- IAM-controlled security boundary prevents unauthorized tag spoofing"]
+
+    style ALL_VMS fill:#FBBC05,color:#333
+    style NET_TAGS fill:#4285F4,color:#fff
+    style SA_TARGETS fill:#34A853,color:#fff
 ```

@@ -1,6 +1,6 @@
 # VPC Networks & Subnets: High-Level & Low-Level Design Architecture
 
-This document presents the **High-Level Design (HLD)** and **Low-Level Design (LLD)** for Google Cloud Platform (GCP) Virtual Private Cloud (VPC) Networks, Regional Subnetworks, IP Address Allocation, Internal DNS Scoping, External IP Billing Mechanics, BYOIP, and VM Stop/Start Lifecycle Behaviors.
+This document presents the **High-Level Design (HLD)** and **Low-Level Design (LLD)** for Google Cloud Platform (GCP) Virtual Private Cloud (VPC) Networks, Regional Subnetworks, IP Address Allocation, Internal DNS Scoping, Cloud DNS SLA, Alias IP Ranges, Virtual Routers, and Distributed Stateful Firewall Rules.
 
 ---
 
@@ -174,10 +174,10 @@ sequenceDiagram
     VM_A->>VM_B: Connect to 10.1.0.3:5432 via Private Global Fiber
 ```
 
-#### Internal DNS Scope Boundary Rules:
-1. **Network Scope Boundary**: Internal DNS resolution operates **strictly within the same VPC network**.
-2. **Cross-VPC DNS Boundary**: A VM in `VPC-1` **cannot** natively resolve the internal hostname of a VM in `VPC-2` via internal DNS, even if external IPs are reachable, unless Cloud DNS Private Zones or VPC Peering with DNS sharing is configured.
-3. **Symbolic FQDN Format**: `[INSTANCE_NAME].[ZONE].c.[PROJECT_ID].internal`
+#### Zonal DNS vs Legacy Global DNS:
+- **Zonal DNS (Recommended)**: `[INSTANCE_NAME].[ZONE].c.[PROJECT_ID].internal`. Recommended by Google for fault tolerance; isolates DNS registration failures to single zones.
+- **Global DNS (Legacy)**: `[INSTANCE_NAME].c.[PROJECT_ID].internal`. Project-wide scope; vulnerable to cross-zone failure propagation.
+- **Metadata Resolver (`169.254.169.254`)**: Intercepts local VPC DNS queries and routes public domain lookups to Google Public DNS (`8.8.8.8`).
 
 ---
 
@@ -231,11 +231,6 @@ graph TD
     style BGP fill:#34A853,stroke:#333,stroke-width:2px,color:#fff
 ```
 
-#### BYOIP Rules & Eligibility:
-1. **Minimum Prefix Size**: Must be a **/24 or larger** IPv4 block (e.g. 256 public IPs). Prefixes smaller than `/24` (e.g. `/25` or `/28`) cannot be advertised globally via BGP over the public internet.
-2. **Global BGP Advertisement**: Google advertises the imported `/24` prefix globally using BGP Anycast from Google's edge points of presence.
-3. **Zero Downtime Migration**: Existing public IP reputations and whitelist entries are preserved when migrating on-premises services to GCP.
-
 ---
 
 ### H. VM Stop/Start State Machine & IP Retention / Release Mechanics
@@ -276,11 +271,168 @@ stateDiagram-v2
     STARTING --> RUNNING: VM Booted
 ```
 
-#### Key Technical Rules of VM Stop/Start & Capacity:
-1. **90-Second Shutdown Grace Period**: Upon issuing `gcloud compute instances stop`, GCP allows guest shutdown scripts up to **90 seconds** to complete before forcefully terminating execution (`SIGKILL`).
-2. **Internal IP Retention**: The internal IP address **is NOT released** when a VM stops. It remains bound to the stopped instance so dependencies referencing `10.1.0.2` do not break upon restart.
-3. **Ephemeral External IP Mutation**: An Ephemeral External IP **is released immediately** upon VM stop. When the instance starts back up, it receives a **brand-new external IP address** from the GCP public pool.
-4. **Three Layers of Instance Capacity Limits**:
-   - **Subnet CIDR Capacity**: Total IPs defined by mask (e.g. `/20` = 4,096 IPs).
-   - **Network Instance Quota**: Project-level limit on max active instances per VPC network (default: 15,000 instances per network).
-   - **Physical Zone Hardware Limits**: Even if CIDR and Quota space exist, deployment can fail with `ZONE_RESOURCE_POOL_EXHAUSTED` if physical server racks in the target zone are temporarily out of capacity.
+---
+
+### I. Hypervisor 1:1 NAT Mapping & Guest OS IP Non-Awareness
+
+In Google Cloud VPC, **the VM Guest OS is completely unaware of its External IP address**.
+
+```mermaid
+graph LR
+    subgraph Guest OS Context inside VM
+        ETH0["Interface: eth0<br/>IP: 10.1.0.2 (Internal IP ONLY)<br/>ifconfig / ip addr show returns 10.1.0.2"]
+    end
+
+    subgraph Hypervisor & VPC Network Layer
+        NAT["Google VPC Hypervisor<br/>1:1 Network Address Translation (NAT) Lookup Table<br/>Mapping: 34.122.10.55 <---> 10.1.0.2"]
+    end
+
+    subgraph External Internet / Public Clients
+        CLIENT["Public Internet Client<br/>Connects to 34.122.10.55"]
+    end
+
+    ETH0 <--> NAT
+    NAT <-->|Edge Router Routing| CLIENT
+
+    style ETH0 fill:#34A853,color:#fff
+    style NAT fill:#4285F4,color:#fff
+```
+
+* **OS Inspection Behavior**: Running `ifconfig` or `ip addr show` inside Linux/Windows guest OS displays **only the private internal IP address** (`10.1.0.2`).
+* **VPC Hypervisor 1:1 NAT**: The VPC hypervisor intercepts inbound packets sent to `34.122.10.55`, rewrites the destination header to `10.1.0.2` via transparent lookup table, and forwards it to `eth0`.
+
+---
+
+### J. Cloud DNS Anycast Managed Architecture (100% Uptime SLA)
+
+GCP Cloud DNS is a managed, authoritative DNS service running on Google's global Anycast infrastructure.
+
+```mermaid
+graph TD
+    subgraph Global Anycast Name Server Infrastructure
+        ANYCAST["ns-cloud-a1.googledomains.com<br/>Single Anycast IP Advertised Worldwide"]
+    end
+
+    subgraph Redundant PoPs
+        POP_US["Point of Presence: North America"]
+        POP_EU["Point of Presence: Europe"]
+        POP_ASIA["Point of Presence: Asia Pacific"]
+    end
+
+    CLIENT_US["User in USA"] -->|Lowest BGP Latency| POP_US
+    CLIENT_EU["User in Germany"] -->|Lowest BGP Latency| POP_EU
+    CLIENT_ASIA["User in Japan"] -->|Lowest BGP Latency| POP_ASIA
+
+    POP_US --> ANYCAST
+    POP_EU --> ANYCAST
+    POP_ASIA --> ANYCAST
+
+    style ANYCAST fill:#4285F4,color:#fff
+```
+
+* **100% Uptime SLA**: Google Cloud offers a **100% SLA for Cloud DNS** because domain resolution failure equates to complete internet unreachability.
+
+---
+
+### K. Alias IP Ranges Architecture for Multi-Service / Container Hosting
+
+Alias IP Ranges allow assigning secondary internal IP CIDRs to a VM instance's primary network interface (`nic0`).
+
+```mermaid
+graph TD
+    subgraph Regional Subnet: 10.1.0.0/24
+        PRIMARY["Primary Subnet Range: 10.1.0.0/24"]
+        SECONDARY["Secondary Pod Range: 10.100.0.0/16"]
+    end
+
+    subgraph VM Instance: gke-node-1
+        NIC0["Network Interface: nic0<br/>Primary Internal IP: 10.1.0.2"]
+        ALIAS_RANGE["Alias IP Range: 10.100.1.0/28<br/>Allocated to nic0"]
+        
+        POD1["Container / Pod 1: 10.100.1.2"]
+        POD2["Container / Pod 2: 10.100.1.3"]
+        POD3["Container / Pod 3: 10.100.1.4"]
+    end
+
+    PRIMARY --> NIC0
+    SECONDARY --> ALIAS_RANGE
+    ALIAS_RANGE --> POD1
+    ALIAS_RANGE --> POD2
+    ALIAS_RANGE --> POD3
+
+    style NIC0 fill:#4285F4,color:#fff
+    style ALIAS_RANGE fill:#34A853,color:#fff
+```
+
+* **Container / Kubernetes Pod Networking**: Enables Docker containers or Kubernetes Pods hosted on a single VM to have native VPC internal IP addresses without creating multiple NICs or overlay networks.
+
+---
+
+### L. Massively Scalable Virtual Router Architecture
+
+Every VPC network contains a software-defined, massively scalable **Virtual Router** at its core.
+
+```mermaid
+graph TD
+    subgraph Global VPC Virtual Router Layer
+        VROUTER["Massively Scalable Software-Defined Virtual Router"]
+    end
+
+    subgraph VM Instances
+        VM1["VM-1 (us-central1-a)"]
+        VM2["VM-2 (europe-west1-b)"]
+        VM3["VM-3 (asia-east1-a)"]
+    end
+
+    subgraph Routing Tables
+        RT1["Per-Instance Read-Only Routing Table for VM-1"]
+        RT2["Per-Instance Read-Only Routing Table for VM-2"]
+    end
+
+    VM1 <-->|Direct Connection| VROUTER
+    VM2 <-->|Direct Connection| VROUTER
+    VM3 <-->|Direct Connection| VROUTER
+
+    VROUTER --> RT1
+    VROUTER --> RT2
+
+    style VROUTER fill:#4285F4,color:#fff
+```
+
+#### Routing Protocol Mechanics:
+1. **Direct Virtual Connection**: Every VM connects directly to the Virtual Router layer.
+2. **Per-Instance Read-Only Routing Tables**: Compute Engine generates a custom read-only routing table for each VM based on the VPC Routes collection.
+3. **Route Priority Matching**: Packets leaving a VM are matched against the routing table by **Longest Prefix Match (LPM)** first, then by **Priority** (lower integer value = higher priority).
+
+---
+
+### M. Distributed Stateful Firewall Architecture & Session Tracking
+
+GCP Firewall Rules function as a **Distributed Stateful Firewall** enforced directly at the hypervisor level of each VM.
+
+```mermaid
+graph TD
+    subgraph VPC Network Layer
+        subgraph Hypervisor Firewall Guard (VM-1 Boundary)
+            STATE_TABLE["Stateful Connection Tracking Table<br/>Tracks active TCP/UDP sessions"]
+            RULES["Firewall Rule Evaluation<br/>Evaluated by Direction, Priority, Tags, Ports"]
+        end
+    end
+
+    CLIENT_IN["Inbound Connection Request"] --> RULES
+    RULES -->|If Allowed by Ingress Rule| STATE_TABLE
+    STATE_TABLE -->|Delivered to VM-1| VM_PROCESS["VM Guest Process"]
+
+    VM_PROCESS -->|Return Response Traffic| STATE_TABLE
+    STATE_TABLE -->|AUTOMATICALLY ALLOWED<br/>Stateful Return Traffic bypassing Egress Rules| CLIENT_IN
+
+    style STATE_TABLE fill:#34A853,color:#fff
+    style RULES fill:#4285F4,color:#fff
+```
+
+#### Stateful Firewall Rules & Implied Defaults:
+1. **Stateful Session Tracking**: All firewall rules are stateful. Once a connection is allowed in one direction (ingress or egress), return traffic in the opposite direction is **automatically permitted** regardless of firewall rules.
+2. **Implied Default Rules**:
+   - **Implied Deny Ingress (Priority 65535)**: Blocks all inbound traffic unless explicitly allowed.
+   - **Implied Allow Egress (Priority 65535)**: Allows all outbound traffic from VMs unless explicitly denied.
+3. **Rule Components**: Direction (Ingress/Egress), Priority (0 to 65535), Target (Tags / Service Accounts), Source/Destination (CIDR / Tags / Service Accounts), Protocol/Port, Action (Allow / Deny).
