@@ -535,6 +535,77 @@ gcloud iam service-accounts add-iam-policy-binding app-sa@YOUR_PROJECT_ID.iam.gs
 
 ---
 
+### 4.3 Manual 3-Step Production Deployment Workflow (No Auto-Detect)
+
+#### Step 1: Find Active Project ID & Account Email
+```bash
+# 1. Display active Project ID
+gcloud config get-value project
+
+# 2. Display active Account Email
+gcloud config get-value account
+```
+
+#### Step 2: Grant All Required IAM Roles for Infrastructure & VM Creation
+```bash
+export PROJECT_ID="YOUR_PROJECT_ID"
+export USER_EMAIL="user:your-email@example.com"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID --member=$USER_EMAIL --role="roles/compute.networkAdmin" \
+  && gcloud projects add-iam-policy-binding $PROJECT_ID --member=$USER_EMAIL --role="roles/compute.instanceAdmin.v1" \
+  && gcloud projects add-iam-policy-binding $PROJECT_ID --member=$USER_EMAIL --role="roles/iap.tunnelResourceAccessor" \
+  && gcloud projects add-iam-policy-binding $PROJECT_ID --member=$USER_EMAIL --role="roles/compute.osAdminLogin"
+```
+
+#### Step 3: Run Master Chained Pipeline Command (`production-vpc`)
+```bash
+gcloud compute networks create production-vpc \
+    --subnet-mode=custom \
+    --bgp-routing-mode=global \
+  && gcloud compute networks subnets create prod-subnet-us \
+      --network=production-vpc \
+      --region=us-central1 \
+      --range=10.200.0.0/20 \
+      --enable-private-ip-google-access \
+  && gcloud compute firewall-rules create prod-allow-iap-ssh \
+      --network=production-vpc \
+      --direction=INGRESS \
+      --priority=1000 \
+      --action=ALLOW \
+      --rules=tcp:22 \
+      --source-ranges=35.235.240.0/20 \
+  && gcloud compute routers create prod-nat-router \
+      --network=production-vpc \
+      --region=us-central1 \
+  && gcloud compute routers nats create prod-nat-gateway \
+      --router=prod-nat-router \
+      --region=us-central1 \
+      --auto-allocate-nat-external-ips \
+      --nat-all-subnet-ip-ranges \
+      --enable-logging \
+      --log-config-filter=ALL \
+  && gcloud compute instances create prod-app-server-01 \
+      --zone=us-central1-c \
+      --machine-type=e2-standard-4 \
+      --subnet=prod-subnet-us \
+      --private-network-ip=10.200.0.10 \
+      --no-address \
+      --can-ip-forward \
+      --tags=prod-web,prod-app \
+      --image-family=debian-11 \
+      --image-project=debian-cloud \
+      --boot-disk-size=50GB \
+      --boot-disk-type=pd-ssd \
+      --boot-disk-auto-delete \
+      --metadata=startup-script='#!/bin/bash apt-get update && apt-get install -y nginx' \
+      --maintenance-policy=MIGRATE \
+      --enable-shielded-vm \
+      --shielded-secure-boot \
+      --deletion-protection
+```
+
+---
+
 ## Related Workspace Documents
 
 - [Case Study Index](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/README.md)
@@ -542,4 +613,5 @@ gcloud iam service-accounts add-iam-policy-binding app-sa@YOUR_PROJECT_ID.iam.gs
 - [Low-Level Packet Lifecycle (LLD)](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/lld-packet-lifecycle.md)
 - [Stateful Firewall Deep Dive](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/firewall-deep-dive.md)
 - [Compute & Network Integration](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/compute-network-integration.md)
+
 
