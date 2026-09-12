@@ -43,6 +43,13 @@ gcd/
 │   ├── shell-commands.md             # In-Depth CLI Manual & Error Matrix (`bq`)
 │   └── references.md                 # Official BigQuery Documentation Links & SQL Best Practices
 │
+├── vpc-network/                      # Feature 6: VPC Networks & Subnets (Global Networking)
+│   ├── README.md                     # VPC Network Feature Index
+│   ├── hld-lld-design.md             # Global VPC Topology & 4 Reserved IP Addresses Architecture
+│   ├── decision-tree.md              # Auto vs Custom Mode & Non-Downtime CIDR Expansion Trees
+│   ├── shell-commands.md             # In-Depth CLI Manual & Error Matrix (`gcloud compute networks/subnets`)
+│   └── references.md                 # Official VPC Documentation Links & RFC Standards
+│
 └── README.md                         # Master Workspace Index (This File)
 ```
 
@@ -87,3 +94,11 @@ gcd/
 * **[ASCII & Visual Decision Trees (`bigquery/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/bigquery/decision-tree.md)**
 * **[Shell Command Reference & Failure Resolutions (`bigquery/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/bigquery/shell-commands.md)**
 * **[Official References & Links (`bigquery/references.md`)](file:///home/btpl-lap-22/live/gcd/bigquery/references.md)**
+
+---
+
+### Feature 6: VPC Networks & Subnets (`/vpc-network/`)
+* **[HLD & LLD Design (`vpc-network/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/vpc-network/hld-lld-design.md)**
+* **[ASCII & Visual Decision Trees (`vpc-network/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/vpc-network/decision-tree.md)**
+* **[Shell Command Reference & Verification Manual (`vpc-network/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/vpc-network/shell-commands.md)**
+* **[Official References & Links (`vpc-network/references.md`)](file:///home/btpl-lap-22/live/gcd/vpc-network/references.md)**
