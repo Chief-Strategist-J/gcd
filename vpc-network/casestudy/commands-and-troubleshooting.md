@@ -165,6 +165,17 @@ gcloud compute instances create prod-app-vm-01 \
 
 ---
 
+#### The Complete End-to-End Single Chained Pipeline Command (`&&`)
+
+If the VPC network, subnet, firewall rules, router, and NAT gateway do not exist yet, run this **Single Chained Pipeline Command** using `&&` operators to create the entire network infrastructure AND provision the Compute Engine VM in one continuous execution:
+
+```bash
+gcloud compute networks create privatenet --subnet-mode=custom --bgp-routing-mode=global && gcloud compute networks subnets create privatenet-us --network=privatenet --region=us-central1 --range=10.130.0.0/20 --enable-private-ip-google-access && gcloud compute firewall-rules create privatenet-allow-ssh --network=privatenet --direction=INGRESS --priority=1000 --action=ALLOW --rules=tcp:22 --source-ranges=35.235.240.0/20 && gcloud compute routers create nat-router --network=privatenet --region=us-central1 && gcloud compute routers nats create nat-config --router=nat-router --region=us-central1 --auto-allocate-nat-external-ips --nat-all-subnet-ip-ranges --enable-logging --log-config-filter=ALL && gcloud compute instances create vm-internal --zone=us-central1-c --machine-type=e2-standard-2 --subnet=privatenet-us --private-network-ip=10.130.0.50 --no-address --can-ip-forward --tags=web-server,app-backend --image-family=debian-11 --image-project=debian-cloud --boot-disk-size=50GB --boot-disk-type=pd-ssd --boot-disk-auto-delete --metadata=startup-script='#!/bin/bash apt-get update && apt-get install -y nginx' --maintenance-policy=MIGRATE --enable-shielded-vm --shielded-secure-boot --deletion-protection
+```
+
+---
+
+
 #### Production Master Command Blueprints & Templates
 
 ##### Blueprint 1: Production Private Isolated Enterprise VM (`--no-address` + IAP SSH)
