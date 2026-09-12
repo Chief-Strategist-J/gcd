@@ -115,7 +115,7 @@ privateIpGoogleAccess: true
 
 ## Category 3: Zero-Downtime Subnet IP Range Expansion
 
-### 1. Expand Subnet Range Without Workload Downtime (e.g. /24 to /20)
+### 1. Standard Subnet Range Expansion (e.g. /24 to /20)
 
 ```bash
 gcloud compute networks subnets expand-ip-range prod-subnet-us-central1 \
@@ -138,6 +138,85 @@ gcloud compute networks subnets describe prod-subnet-us-central1 \
 #### Expected Verification Output:
 ```text
 10.1.0.0/20
+```
+
+---
+
+### 2. Practical End-to-End Lab Scenario: IP Space Exhaustion on /29 & Live Expansion to /23
+
+This scenario demonstrates handling subnet IP exhaustion on a small `/29` subnet (8 total IPs, 4 reserved by GCP, leaving 4 available host IPs). When 4 VMs consume all available IPs, a 5th VM creation fails with `IP_SPACE_EXHAUSTED`. Expanding the subnet to `/23` (512 total IPs) live allows the 5th VM to launch without taking down any of the 4 running VMs.
+
+#### Step 1: Create Small /29 Subnet (4 Usable Host IPs)
+```bash
+gcloud compute networks subnets create demo-small-subnet \
+    --network=gcd-prod-custom-vpc \
+    --region=us-central1 \
+    --range=10.10.0.0/29
+```
+
+#### Step 2: Launch 4 VMs to Exhaust Subnet IP Space (Consumes 10.10.0.2 to 10.10.0.5)
+```bash
+gcloud compute instances create vm-1 vm-2 vm-3 vm-4 \
+    --zone=us-central1-a \
+    --machine-type=e2-micro \
+    --subnet=demo-small-subnet
+```
+
+#### Step 3: Attempt to Launch 5th VM Instance (Fails Due to IP Exhaustion)
+```bash
+gcloud compute instances create vm-5 \
+    --zone=us-central1-a \
+    --machine-type=e2-micro \
+    --subnet=demo-small-subnet
+```
+
+#### Expected Terminal Output (IP Exhaustion Failure):
+```text
+ERROR: (gcloud.compute.instances.create) Could not fetch resource:
+- IP space of subnetwork 'demo-small-subnet' in region 'us-central1' is exhausted.
+```
+
+#### Step 4: Expand Subnet Live from /29 to /23 (Zero VM Downtime for VMs 1-4)
+```bash
+gcloud compute networks subnets expand-ip-range demo-small-subnet \
+    --region=us-central1 \
+    --prefix-length=23
+```
+
+#### Expected Terminal Output:
+```text
+Updated [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/subnetworks/demo-small-subnet].
+```
+
+#### Step 5: Retry Launching 5th VM Instance (Succeeds Immediately)
+```bash
+gcloud compute instances create vm-5 \
+    --zone=us-central1-a \
+    --machine-type=e2-micro \
+    --subnet=demo-small-subnet
+```
+
+#### Expected Terminal Output (Success):
+```text
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/zones/us-central1-a/instances/vm-5].
+NAME  ZONE           MACHINE_TYPE  PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP    STATUS
+vm-5  us-central1-a  e2-micro                   10.10.0.6    34.122.10.55   RUNNING
+```
+
+#### How to Verify Configuration & Zero-Downtime Correctness:
+```bash
+# Verify all 5 VMs are active and running without downtime
+gcloud compute instances list --filter="subnet:demo-small-subnet"
+```
+
+#### Expected Verification Output:
+```text
+NAME  ZONE           MACHINE_TYPE  INTERNAL_IP  STATUS
+vm-1  us-central1-a  e2-micro      10.10.0.2    RUNNING
+vm-2  us-central1-a  e2-micro      10.10.0.3    RUNNING
+vm-3  us-central1-a  e2-micro      10.10.0.4    RUNNING
+vm-4  us-central1-a  e2-micro      10.10.0.5    RUNNING
+vm-5  us-central1-a  e2-micro      10.10.0.6    RUNNING
 ```
 
 ---
@@ -255,6 +334,7 @@ status: RESERVED
 
 | Error Code / Status | Root Cause | Diagnosis Command | Immediate Resolution Command |
 | :--- | :--- | :--- | :--- |
+| **`IP_SPACE_EXHAUSTED`** | All available host IPs in subnet CIDR block consumed by running instances. | `gcloud compute instances list --filter="subnet:SUBNET"` | Expand subnet live: `gcloud compute networks subnets expand-ip-range SUBNET --prefix-length=NEW_MASK` (e.g. `/29` to `/23`). |
 | **`INVALID_CIDR_RANGE` / Overlap** | Subnet IP range overlaps with another subnet in the same VPC or peered network. | `gcloud compute networks subnets list --network=VPC_NAME` | Assign non-overlapping RFC 1918 CIDR block (e.g., `10.2.0.0/24`). |
 | **`CANNOT_SHRINK_SUBNET`** | Attempted to expand range with larger prefix mask (e.g. `/20` to `/24`). | `gcloud compute networks subnets describe SUBNET` | Subnet expansion is one-way. Pass smaller prefix number (e.g., `/20` or `/16`). |
 | **`AUTO_MODE_CONVERSION_FAILED`** | Custom subnets already exist or API parameters malformed. | `gcloud compute networks describe VPC` | Verify VPC is currently Auto mode before calling `switch-mode --mode=custom`. |
