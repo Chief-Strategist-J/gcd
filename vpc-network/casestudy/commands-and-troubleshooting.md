@@ -535,29 +535,29 @@ gcloud iam service-accounts add-iam-policy-binding app-sa@YOUR_PROJECT_ID.iam.gs
 
 ---
 
-### 4.3 Manual 3-Step Production Deployment Workflow (No Auto-Detect)
+### 4.3 Manual 4-Step Production Deployment & Access Workflow (No Auto-Detect)
 
-#### Step 1: Find Active Project ID & Account Email
+#### Step 1: FIND Command (Identify Project ID, User Account & Compute Resources)
 ```bash
-# 1. Display active Project ID
+# 1. Display active GCP Project ID
 gcloud config get-value project
 
-# 2. Display active Account Email
+# 2. Display active GCP Authenticated Account Email
 gcloud config get-value account
+
+# 3. List existing compute instances in active project
+gcloud compute instances list
 ```
 
-#### Step 2: Grant All Required IAM Roles for Infrastructure & VM Creation
+#### Step 2: GRANT IAM Roles Command (Explicit Role Assignment)
 ```bash
-export PROJECT_ID="YOUR_PROJECT_ID"
-export USER_EMAIL="user:your-email@example.com"
-
-gcloud projects add-iam-policy-binding $PROJECT_ID --member=$USER_EMAIL --role="roles/compute.networkAdmin" \
-  && gcloud projects add-iam-policy-binding $PROJECT_ID --member=$USER_EMAIL --role="roles/compute.instanceAdmin.v1" \
-  && gcloud projects add-iam-policy-binding $PROJECT_ID --member=$USER_EMAIL --role="roles/iap.tunnelResourceAccessor" \
-  && gcloud projects add-iam-policy-binding $PROJECT_ID --member=$USER_EMAIL --role="roles/compute.osAdminLogin"
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID --member="user:your-email@example.com" --role="roles/compute.networkAdmin" \
+  && gcloud projects add-iam-policy-binding YOUR_PROJECT_ID --member="user:your-email@example.com" --role="roles/compute.instanceAdmin.v1" \
+  && gcloud projects add-iam-policy-binding YOUR_PROJECT_ID --member="user:your-email@example.com" --role="roles/compute.osAdminLogin" \
+  && gcloud projects add-iam-policy-binding YOUR_PROJECT_ID --member="user:your-email@example.com" --role="roles/iap.tunnelResourceAccessor"
 ```
 
-#### Step 3: Run Master Chained Pipeline Command (`production-vpc`)
+#### Step 3: BUILD Infrastructure & Private VM Command (Single Chained Pipeline)
 ```bash
 gcloud compute networks create production-vpc \
     --subnet-mode=custom \
@@ -602,6 +602,24 @@ gcloud compute networks create production-vpc \
       --enable-shielded-vm \
       --shielded-secure-boot \
       --deletion-protection
+```
+
+#### Step 4: ACCESS & CONNECT Command Set (Connecting, Testing & Logging)
+```bash
+# 1. SSH into private VM via IAP Tunnel
+gcloud compute ssh prod-app-server-01 --zone=us-central1-c --tunnel-through-iap
+
+# 2. Test outbound public internet access via Cloud NAT (Run inside VM)
+curl -i https://ifconfig.me
+
+# 3. Test Private Google Access (PGA) to Google Cloud Storage (Run inside VM)
+gsutil ls gs://my-gcp-bucket-name
+
+# 4. Copy local files to private VM via IAP SCP
+gcloud compute scp ./app-config.json prod-app-server-01:/tmp/ --zone=us-central1-c --tunnel-through-iap
+
+# 5. Query Cloud NAT packet translation logs
+gcloud logging read 'resource.type="gce_router" AND jsonPayload.instance_name="prod-app-server-01"' --limit=10 --format="json"
 ```
 
 ---
