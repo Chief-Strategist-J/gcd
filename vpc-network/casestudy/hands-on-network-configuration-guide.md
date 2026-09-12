@@ -679,6 +679,98 @@ gcloud logging read 'resource.type="nat_gateway" AND resource.labels.gateway_nam
 | **Apt Update Test (NAT ON)** | `sudo apt-get update` | Retries package index update over Cloud NAT Gateway. | **Succeeds!** Output finishes with `Reading package lists... Done`. |
 | **Cloud NAT Logging** | `--enable-logging --log-config-filter=ALL` | Captures log events for **NAT connection creation** and **port exhaustion errors** to Cloud Logging. | Logs viewable in Logs Explorer under `resource.type="nat_gateway"`. |
 
+---
+
+### Step 8.7: All-in-One Sequential Copy-Paste Master Script
+
+For complete automation, run the single sequential bash script below in Cloud Shell to create the VPC network, subnet with PGA, IAP firewall rule, private VM instance, Cloud Router, Cloud NAT Gateway, and logging configuration in sequence:
+
+```bash
+#!/usr/bin/env bash
+# ==============================================================================
+# GCP VPC PRIVATE NETWORK, PGA, CLOUD NAT & FIREWALL COMPLETE SEQUENTIAL SCRIPT
+# ==============================================================================
+# This script provisions:
+# 1. Custom VPC Network (privatenet)
+# 2. Custom Regional Subnet (privatenet-us: 10.130.0.0/20) with PGA enabled
+# 3. IAP Ingress Firewall Rule (privatenet-allow-ssh for 35.235.240.0/20)
+# 4. Isolated Private Compute Engine Instance (vm-internal with --no-address)
+# 5. Cloud Router (nat-router) & Cloud NAT Gateway (nat-config)
+# 6. Cloud NAT Connection & Error Logging
+# ==============================================================================
+
+# Step 0: Set Configuration Variables
+export REGION="us-central1"
+export ZONE="us-central1-c"
+export VPC_NAME="privatenet"
+export SUBNET_NAME="privatenet-us"
+export SUBNET_CIDR="10.130.0.0/20"
+export FW_RULE_NAME="privatenet-allow-ssh"
+export VM_NAME="vm-internal"
+export ROUTER_NAME="nat-router"
+export NAT_NAME="nat-config"
+
+echo "=== 1. Creating Custom VPC Network: $VPC_NAME ==="
+gcloud compute networks create $VPC_NAME \
+    --subnet-mode=custom \
+    --bgp-routing-mode=global
+
+echo "=== 2. Creating Regional Subnet with Private Google Access (PGA): $SUBNET_NAME ==="
+gcloud compute networks subnets create $SUBNET_NAME \
+    --network=$VPC_NAME \
+    --region=$REGION \
+    --range=$SUBNET_CIDR \
+    --enable-private-ip-google-access
+
+echo "=== 3. Creating Firewall Rule for IAP Tunneling SSH (35.235.240.0/20): $FW_RULE_NAME ==="
+gcloud compute firewall-rules create $FW_RULE_NAME \
+    --network=$VPC_NAME \
+    --direction=INGRESS \
+    --priority=1000 \
+    --action=ALLOW \
+    --rules=tcp:22 \
+    --source-ranges=35.235.240.0/20
+
+echo "=== 4. Launching Private VM Instance without External IP: $VM_NAME ==="
+gcloud compute instances create $VM_NAME \
+    --zone=$ZONE \
+    --machine-type=e2-standard-2 \
+    --subnet=$SUBNET_NAME \
+    --no-address
+
+echo "=== 5. Creating Cloud Router: $ROUTER_NAME ==="
+gcloud compute routers create $ROUTER_NAME \
+    --network=$VPC_NAME \
+    --region=$REGION
+
+echo "=== 6. Creating Cloud NAT Gateway with Connection Logging: $NAT_NAME ==="
+gcloud compute routers nats create $NAT_NAME \
+    --router=$ROUTER_NAME \
+    --region=$REGION \
+    --auto-allocate-nat-external-ips \
+    --nat-all-subnet-ip-ranges \
+    --enable-logging \
+    --log-config-filter=ALL
+
+echo "=== 7. Provisioning Complete! Verifying Resources ==="
+gcloud compute instances list --filter="name=$VM_NAME"
+gcloud compute routers nats describe $NAT_NAME --router=$ROUTER_NAME --region=$REGION
+
+echo "=== How to Test & Verify Connectivity ==="
+echo "1. Connect to private VM via IAP Tunnel:"
+echo "   gcloud compute ssh $VM_NAME --zone=$ZONE --tunnel-through-iap"
+echo ""
+echo "2. Inside VM, test outbound internet updates via Cloud NAT:"
+echo "   sudo apt-get update"
+echo ""
+echo "3. Inside VM, test Cloud Storage access via Private Google Access:"
+echo "   gcloud storage ls"
+echo ""
+echo "4. View Cloud NAT logs in Cloud Logging:"
+echo "   gcloud logging read 'resource.type=\"nat_gateway\" AND resource.labels.gateway_name=\"$NAT_NAME\"' --limit=5"
+```
+
+
 
 ---
 
