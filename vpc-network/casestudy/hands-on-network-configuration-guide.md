@@ -683,12 +683,52 @@ gcloud logging read 'resource.type="nat_gateway" AND resource.labels.gateway_nam
 
 ### Step 8.7: Step-by-Step Direct `gcloud` CLI Commands Sequence
 
-Below is the clean, direct sequence of `gcloud` CLI commands to create the Custom VPC network, PGA subnet, IAP firewall rule, private VM instance, Cloud Router, Cloud NAT Gateway, and connection logging:
+#### All-in-One Infrastructure Creation (Copy & Paste All at Once):
+```bash
+gcloud compute networks create privatenet --subnet-mode=custom --bgp-routing-mode=global
+
+gcloud compute networks subnets create privatenet-us \
+    --network=privatenet \
+    --region=us-central1 \
+    --range=10.130.0.0/20 \
+    --enable-private-ip-google-access
+
+gcloud compute firewall-rules create privatenet-allow-ssh \
+    --network=privatenet \
+    --direction=INGRESS \
+    --priority=1000 \
+    --action=ALLOW \
+    --rules=tcp:22 \
+    --source-ranges=35.235.240.0/20
+
+gcloud compute instances create vm-internal \
+    --zone=us-central1-c \
+    --machine-type=e2-standard-2 \
+    --subnet=privatenet-us \
+    --no-address
+
+gcloud compute routers create nat-router \
+    --network=privatenet \
+    --region=us-central1
+
+gcloud compute routers nats create nat-config \
+    --router=nat-router \
+    --region=us-central1 \
+    --auto-allocate-nat-external-ips \
+    --nat-all-subnet-ip-ranges \
+    --enable-logging \
+    --log-config-filter=ALL
+```
+
+---
+
+#### Step-by-Step Command Explanations:
 
 #### 1. Create the Custom VPC Network
 ```bash
 gcloud compute networks create privatenet --subnet-mode=custom --bgp-routing-mode=global
 ```
+
 
 #### 2. Create the Regional Subnet with Private Google Access (PGA)
 ```bash
