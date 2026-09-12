@@ -440,6 +440,15 @@ gcloud compute networks subnets update prod-subnet-us \
     --add-secondary-ranges=gke-pods-range=10.100.0.0/16,gke-services-range=10.101.0.0/20
 ```
 
+##### Parameter Breakdown & Technical Rationale:
+
+| Parameter / Flag | Type | Definition & Purpose | Default Value | Technical Rationale & Impact |
+| :--- | :--- | :--- | :--- | :--- |
+| `prod-subnet-us` | Positional | **Target Subnetwork**: The subnet to update. | *Required* | Identifies the primary node subnet. |
+| `--add-secondary-ranges` | Option | **Secondary Subnet Alias Ranges**: Defines secondary IPv4 CIDR blocks attached to subnet. | *None* | `gke-pods-range=10.100.0.0/16` allocates 65,536 IP addresses dedicated to Kubernetes Pods. `gke-services-range=10.101.0.0/20` allocates 4,096 IPs for ClusterIP Services. |
+
+---
+
 ### Step 7.2: Launch VPC-Native Private GKE Cluster
 ```bash
 gcloud container clusters create gke-prod-cluster \
@@ -455,6 +464,22 @@ gcloud container clusters create gke-prod-cluster \
     --master-authorized-networks=10.200.1.0/24 \
     --enable-network-policy
 ```
+
+##### Parameter Breakdown & Technical Rationale:
+
+| Parameter / Flag | Type | Definition & Purpose | Technical Rationale & Impact |
+| :--- | :--- | :--- | :--- |
+| `gke-prod-cluster` | Positional | **Cluster Name**: Unique GKE cluster identifier. | Name handle for Kubernetes API server and GCP console. |
+| `--enable-ip-alias` | Flag | **VPC-Native Networking Switch**: Enables Alias IP native VPC routing. | **Crucial Architecture Choice**: Replaces legacy Routes-Based networking with VPC-Native routing. Pod IPs are natively recognized by Andromeda SDN, eliminating overlay encapsulation overhead! |
+| `--cluster-secondary-range-name` | Option | **Pod IP Secondary Range**: Binds Pods to secondary subnet CIDR. | Dynamically assigns Pod IPs from `10.100.0.0/16`. |
+| `--services-secondary-range-name` | Option | **Service IP Secondary Range**: Binds K8s Services to secondary CIDR. | Dynamically assigns ClusterIP Service IPs from `10.101.0.0/20`. |
+| `--enable-private-nodes` | Flag | **Private Node Enforcement**: Disables public external IPs on worker nodes. | **Security Hardening**: Nodes possess internal RFC 1918 IPs only (`10.200.1.x`), preventing direct internet attack vectors. Egress outbound internet access is routed securely via Cloud NAT. |
+| `--master-ipv4-cidr` | Option | **GKE Master Private CIDR**: Dedicated `/28` range (e.g. `172.16.0.0/28`). | Reserves a private 16-host IP block for Google-managed Kubernetes Control Plane API servers, linked to VPC via internal peering. |
+| `--enable-master-authorized-networks` | Flag | **Master API Server Lockdown**: Restricts access to API server (Port 443). | Locks down Kubernetes API server endpoint so only authorized management subnets can run `kubectl` commands. |
+| `--master-authorized-networks` | Option | **Authorized CIDR Block**: Allowed client IP ranges (`10.200.1.0/24`). | Restricts API access strictly to management bastion VMs inside `prod-subnet-us`. |
+| `--enable-network-policy` | Flag | **Kubernetes Network Policy Engine**: Enables Dataplane V2 / eBPF filtering. | Activates pod-level distributed firewalls (Ingress/Egress filtering) inside Kubernetes. |
+
+---
 
 ### Step 7.3: Authenticate `kubectl` & Verify Pod Alias IPs
 ```bash
@@ -472,6 +497,32 @@ kubectl get pods -o wide
 NAME                       READY   STATUS    RESTARTS   AGE   IP            NODE
 web-app-74b89-x8q2z        1/1     Running   0          45s   10.100.1.15   gke-gke-prod-cluster-node-a1
 web-app-74b89-m4k91        1/1     Running   0          45s   10.100.2.20   gke-gke-prod-cluster-node-a2
+```
+
+---
+
+### Step 7.4: Apply Kubernetes Ingress & Egress Micro-Segmentation Network Policy
+```yaml
+# Apply Pod-level Ingress Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: restrict-db-ingress
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: backend-db
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: web-app
+    ports:
+    - protocol: TCP
+      port: 5432
 ```
 
 ---
