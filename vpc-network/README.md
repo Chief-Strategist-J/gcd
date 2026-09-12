@@ -32,3 +32,8 @@ Welcome to the **Google Cloud Virtual Private Cloud (VPC) Networks & Subnets** m
 13. **Cloud DNS 100% SLA**: Global Anycast authoritative DNS infrastructure backed by a 100% uptime SLA.
 14. **Alias IP Ranges**: Sub-allocating secondary internal CIDR ranges to a single VM interface (`nic0`) for native container/pod networking.
 15. **Virtual Router & Distributed Stateful Firewall**: Massively scalable software-defined virtual router, per-instance read-only routing tables, stateful session tracking, and implied default rules (`Deny Ingress 65535`, `Allow Egress 65535`).
+16. **No VM Creation Without VPC Network**: Attempting to launch Compute Engine instances, containers, or App Engine apps without a VPC network fails with `No more networks available`.
+17. **Identity-Aware Proxy (IAP) Firewall Rule**: Secure SSH tunneling via `35.235.240.0/20` TCP port 22 (`--tunnel-through-iap`) without public IP exposure.
+18. **Multi-Protocol Ingress Firewall Policies**: Defining ICMP, TCP 22 (SSH), and TCP 3389 (RDP) ingress allowances within unified firewall rules (`managementnet-allow-icmp-ssh-rdp`, `privatenet-allow-icmp-ssh-rdp`).
+19. **Logical VPC Network Isolation Boundary**: Physical zone co-location (e.g. both VMs in `us-central1-a`) does NOT allow internal IP communication across different VPC networks without VPC Peering or Cloud VPN.
+20. **Network Pricing & Egress Cost Flow**: Ingress ($0/GB), Intra-zone internal IP ($0/GB), Intra-zone external IP leak (billed at $0.01/GB inter-zone rate), Inter-zone ($0.01/GB), Inter-region ($0.02-$0.12/GB), and Private Google Access ($0/GB).

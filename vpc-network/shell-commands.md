@@ -76,8 +76,182 @@ gcloud compute networks describe gcd-dev-auto-vpc --format="value(autoCreateSubn
 ```
 
 #### Expected Verification Output:
-```text
+```yaml
 False
+```
+
+---
+
+### 3. Explore & Delete Default Network & Verify VM Instance Creation Failure Without VPC
+
+```bash
+# Step 1: Delete default firewall rules
+gcloud compute firewall-rules delete default-allow-icmp default-allow-internal default-allow-rdp default-allow-ssh --quiet
+
+# Step 2: Delete default VPC network
+gcloud compute networks delete default --quiet
+
+# Step 3: Attempt to launch VM without VPC network (Expected Failure)
+gcloud compute instances create test-no-vpc-vm --zone=us-central1-a
+```
+
+#### Expected Terminal Output:
+```text
+Deleted [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/firewallrules/default-allow-icmp].
+Deleted [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/networks/default].
+ERROR: (gcloud.compute.instances.create) Could not fetch resource:
+- No more networks available in project.
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+gcloud compute networks list
+```
+
+#### Expected Verification Output:
+```text
+Listed 0 items.
+```
+
+---
+
+### 4. Enable Required Network Management & IAP APIs
+
+```bash
+gcloud services enable iap.googleapis.com networkmanagement.googleapis.com
+```
+
+#### Expected Terminal Output:
+```text
+Operation "operations/acf.123456789" finished successfully.
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+gcloud services list --enabled --filter="name:(iap.googleapis.com OR networkmanagement.googleapis.com)"
+```
+
+#### Expected Verification Output:
+```text
+NAME                                TITLE
+iap.googleapis.com                  Identity-Aware Proxy API
+networkmanagement.googleapis.com    Network Management API
+```
+
+---
+
+### 5. Create Auto Mode VPC Network for Prototyping
+
+```bash
+gcloud compute networks create mynetwork --subnet-mode=auto
+```
+
+#### Expected Terminal Output:
+```text
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/networks/mynetwork].
+NAME       SUBNET_MODE  BGP_ROUTING_MODE  IPV4_RANGE  GATEWAY_IPV4
+mynetwork  AUTO         REGIONAL
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+gcloud compute networks subnets list --network=mynetwork --format="table(name, region, ipCidrRange)"
+```
+
+#### Expected Verification Output:
+```text
+NAME       REGION           RANGE
+mynetwork  us-central1      10.128.0.0/20
+mynetwork  europe-west1     10.132.0.0/20
+mynetwork  asia-east1       10.140.0.0/20
+```
+
+---
+
+### 6. Provision Additional Custom VPC Networks (managementnet & privatenet) with Custom Subnets
+
+```bash
+# Create custom VPC networks
+gcloud compute networks create managementnet --subnet-mode=custom
+gcloud compute networks create privatenet --subnet-mode=custom
+
+# Create custom subnet for managementnet
+gcloud compute networks subnets create managementsubnet-us \
+    --network=managementnet \
+    --region=us-central1 \
+    --range=10.240.0.0/20
+
+# Create custom subnets for privatenet across regions
+gcloud compute networks subnets create privatesubnet-us \
+    --network=privatenet \
+    --region=us-central1 \
+    --range=172.16.0.0/24
+
+gcloud compute networks subnets create privatesubnet-notus \
+    --network=privatenet \
+    --region=us-east1 \
+    --range=172.20.0.0/20
+```
+
+#### Expected Terminal Output:
+```text
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/networks/managementnet].
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/networks/privatenet].
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/subnetworks/managementsubnet-us].
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/subnetworks/privatesubnet-us].
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-east1/subnetworks/privatesubnet-notus].
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+gcloud compute networks subnets list --sort-by=NETWORK --format="table(network, name, region, ipCidrRange)"
+```
+
+#### Expected Verification Output:
+```text
+NETWORK        NAME                 REGION       RANGE
+managementnet  managementsubnet-us  us-central1  10.240.0.0/20
+mynetwork      mynetwork            us-central1  10.128.0.0/20
+privatenet     privatesubnet-notus  us-east1     172.20.0.0/20
+privatenet     privatesubnet-us     us-central1  172.16.0.0/24
+```
+
+---
+
+### 7. Cross-VPC Multi-Network Connectivity Audit (Internal IP Isolation vs External IP Access)
+
+```bash
+# Test 1: Ping External IP of VM in different VPC (Succeeds via public IP / firewall ICMP allow)
+gcloud compute ssh mynet-us-vm --zone=us-central1-a --tunnel-through-iap --command="ping -c 3 34.122.10.55"
+
+# Test 2: Ping Internal IP of VM in same VPC, different region (Succeeds via global VPC internal routing)
+gcloud compute ssh mynet-us-vm --zone=us-central1-a --tunnel-through-iap --command="ping -c 3 10.132.0.2"
+
+# Test 3: Ping Internal IP of VM in different VPC in same physical zone (Fails - 100% packet loss)
+gcloud compute ssh mynet-us-vm --zone=us-central1-a --tunnel-through-iap --command="ping -c 3 10.240.0.2"
+```
+
+#### Expected Terminal Output:
+```text
+--- 34.122.10.55 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2003ms
+
+--- 10.132.0.2 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2004ms
+
+--- 10.240.0.2 ping statistics ---
+3 packets transmitted, 0 received, 100% packet loss, time 2048ms
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+# Confirm that isolated VPCs require VPC Peering or Cloud VPN for internal IP communication
+gcloud compute network-peerings list
+```
+
+#### Expected Verification Output:
+```text
+Listed 0 items.
 ```
 
 ---
@@ -240,6 +414,80 @@ gcloud compute firewall-rules create allow-internal-ssh \
 #### Expected Terminal Output:
 ```text
 Creating firewall rule...done.
+```
+
+---
+
+### 2. Provision Identity-Aware Proxy (IAP) Ingress Firewall Rule (35.235.240.0/20)
+
+```bash
+gcloud compute firewall-rules create allow-iap-ssh \
+    --network=mynetwork \
+    --direction=INGRESS \
+    --priority=1000 \
+    --action=ALLOW \
+    --rules=tcp:22 \
+    --source-ranges=35.235.240.0/20 \
+    --target-tags=iap-gce
+```
+
+#### Expected Terminal Output:
+```text
+Creating firewall rule...done.
+NAME          NETWORK    DIRECTION  PRIORITY  ALLOW   DENY  DISABLED
+allow-iap-ssh mynetwork  INGRESS    1000      tcp:22        False
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+gcloud compute firewall-rules describe allow-iap-ssh --format="yaml(name, sourceRanges, allowed, targetTags)"
+```
+
+#### Expected Verification Output:
+```yaml
+allowed:
+- IPProtocol: tcp
+  ports:
+  - '22'
+name: allow-iap-ssh
+sourceRanges:
+- 35.235.240.0/20
+targetTags:
+- iap-gce
+```
+
+---
+
+### 3. Provision Multi-Protocol Combined Ingress Firewall Rules (ICMP, SSH, RDP)
+
+```bash
+# Provision firewall rule allowing ICMP, TCP 22 (SSH), and TCP 3389 (RDP) for privatenet
+gcloud compute firewall-rules create privatenet-allow-icmp-ssh-rdp \
+    --direction=INGRESS \
+    --priority=1000 \
+    --network=privatenet \
+    --action=ALLOW \
+    --rules=icmp,tcp:22,tcp:3389 \
+    --source-ranges=0.0.0.0/0
+```
+
+#### Expected Terminal Output:
+```text
+Creating firewall rule...done.
+NAME                           NETWORK     DIRECTION  PRIORITY  ALLOW                 DENY  DISABLED
+privatenet-allow-icmp-ssh-rdp  privatenet  INGRESS    1000      icmp,tcp:22,tcp:3389        False
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+gcloud compute firewall-rules list --sort-by=NETWORK --format="table(network, name, priority, allow)"
+```
+
+#### Expected Verification Output:
+```text
+NETWORK        NAME                           PRIORITY  ALLOW
+managementnet  managementnet-allow-icmp-ssh  1000      tcp:22,tcp:3389,icmp
+privatenet     privatenet-allow-icmp-ssh-rdp  1000      icmp,tcp:22,tcp:3389
 ```
 
 ---
@@ -651,6 +899,8 @@ HTTP/1.1 200 OK
 
 | Error Code / Status | Root Cause | Diagnosis Command | Immediate Resolution Command |
 | :--- | :--- | :--- | :--- |
+| **`NO_MORE_NETWORKS_AVAILABLE`** | Attempted to create VM in a project with no VPC networks (e.g. after deleting default VPC). | `gcloud compute networks list` | Create VPC network: `gcloud compute networks create VPC_NAME --subnet-mode=custom`. |
+| **`CROSS_VPC_INTERNAL_IP_ISOLATION`** | Internal ping between VMs in different VPC networks failed despite being in the same zone. | `gcloud compute instances list --format="yaml(name, networkInterfaces)"` | VPCs are logically isolated private domains. Use External IPs or set up VPC Network Peering / Cloud VPN. |
 | **`INTRAZONE_EXTERNAL_IP_COST_LEAK`** | Intra-zone VM traffic using External IPs is billed at Inter-Zone egress rate ($0.01/GB). | `gcloud compute instances list --format="yaml(name, networkInterfaces)"` | Reconfigure internal application configs to resolve internal DNS (`vm-2.zone.c.PROJECT.internal`) or internal IP (`10.x.x.x`). |
 | **`EXTERNAL_IP_NOT_IN_OS_IFCONFIG`** | Expected external IP to show inside VM OS `ifconfig`. | `gcloud compute ssh VM --command="ip addr show"` | Working as intended. GCP uses 1:1 hypervisor NAT. External IP is mapped transparently outside the VM OS. |
 | **`ALIAS_IP_CIDR_OVERLAP`** | Alias IP range conflicts with primary VM IP or another alias range. | `gcloud compute instances describe VM \| grep aliasIpRanges` | Assign secondary CIDR range from subnet that is not allocated to other VMs. |

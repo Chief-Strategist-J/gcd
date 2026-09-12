@@ -136,4 +136,28 @@ flowchart TD
     style ALL_VMS fill:#FBBC05,color:#333
     style NET_TAGS fill:#4285F4,color:#fff
     style SA_TARGETS fill:#34A853,color:#fff
+
+---
+
+## 7. Cross-VPC Connectivity vs Physical Zone Alignment Decision Tree
+
+```mermaid
+flowchart TD
+    PHYS_START["Two VMs Reside in Same Physical Zone (e.g. us-central1-a)"] --> VPC_BOUNDARY{"Are both VMs attached to the same VPC Network?"}
+
+    VPC_BOUNDARY -- "Yes (Same VPC)" --> DIRECT_INTERNAL["Internal IP Connectivity Allowed<br/>- Ping & TCP traffic routed directly over local hypervisor<br/>- Governed by VPC ingress/egress firewall rules"]
+
+    VPC_BOUNDARY -- "No (Different VPC Networks)" --> TRY_INTERNAL{"Can VM-1 ping VM-2 via Internal IP (10.x.x.x / 172.x.x.x)?"}
+
+    TRY_INTERNAL -- "Direct Internal Ping Attempt" --> PACKET_LOSS["100% Packet Loss (CONNECTION FAILED)<br/>- VPC networks are logically isolated private domains<br/>- Physical co-location in the same zone DOES NOT grant network connectivity"]
+
+    PACKET_LOSS --> CONNECTIVITY_SOLUTION{"Select Inter-VPC Connectivity Solution"}
+    CONNECTIVITY_SOLUTION -- "Same Org / High Bandwidth / Low Latency" --> VPC_PEERING["Configure VPC Network Peering<br/>- Allows private internal IP routing without internet traversal"]
+    CONNECTIVITY_SOLUTION -- "Cross-Organization / IP Overlap / Hybrid" --> CLOUD_VPN_SOLUTION["Configure Cloud VPN or Cloud Interconnect<br/>- IPsec encrypted tunnel for internal connectivity"]
+    CONNECTIVITY_SOLUTION -- "Public Service Access" --> EXTERNAL_IP_SOLUTION["Use External IP Addresses<br/>- Traffic routes out through Google Edge and back in<br/>- Billed as external egress"]
+
+    style DIRECT_INTERNAL fill:#34A853,color:#fff
+    style PACKET_LOSS fill:#EA4335,color:#fff
+    style VPC_PEERING fill:#4285F4,color:#fff
+```
 ```
