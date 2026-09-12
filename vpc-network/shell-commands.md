@@ -380,6 +380,136 @@ gcloud compute addresses delete abandoned-legacy-ip unused-test-ip --region=us-c
 
 ---
 
+### 4. Practical Lab Scenario: VM Stop/Start Lifecycle & Ephemeral External IP Mutation vs Internal IP Retention
+
+This lab scenario demonstrates the exact lifecycle behavior of internal vs ephemeral external IPs when a VM is stopped and started. Upon stopping (with a 90-second shutdown script grace period), the internal IP is retained while the ephemeral external IP is released. Upon starting back up, the internal IP remains identical, but a **new, different Ephemeral External IP** is assigned from the GCP public pool.
+
+#### Step 1: Provision Test VM with Ephemeral External IP
+```bash
+gcloud compute instances create lifecycle-demo-vm \
+    --zone=us-central1-a \
+    --machine-type=e2-micro \
+    --subnet=prod-subnet-us-central1
+```
+
+#### Record Initial IP Addresses:
+```bash
+gcloud compute instances describe lifecycle-demo-vm --zone=us-central1-a \
+    --format="yaml(networkInterfaces[0].networkIP, networkInterfaces[0].accessConfigs[0].natIP)"
+```
+
+#### Expected Initial Output:
+```yaml
+accessConfigs:
+- natIP: 34.122.10.55
+networkIP: 10.1.0.2
+```
+
+#### Step 2: Stop VM Instance (Triggers 90-Second Shutdown Grace Period)
+```bash
+gcloud compute instances stop lifecycle-demo-vm --zone=us-central1-a
+```
+
+#### Expected Terminal Output:
+```text
+Stopping instance [lifecycle-demo-vm]...done.
+Updated [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/zones/us-central1-a/instances/lifecycle-demo-vm].
+```
+
+#### Step 3: Inspect Stopped VM IP State
+```bash
+gcloud compute instances describe lifecycle-demo-vm --zone=us-central1-a \
+    --format="yaml(status, networkInterfaces[0].networkIP, networkInterfaces[0].accessConfigs)"
+```
+
+#### Expected Verification Output (Internal IP Retained, External IP Released):
+```yaml
+networkIP: 10.1.0.2
+status: TERMINATED
+```
+
+#### Step 4: Restart VM Instance
+```bash
+gcloud compute instances start lifecycle-demo-vm --zone=us-central1-a
+```
+
+#### Step 5: Verify Mutated Ephemeral External IP & Retained Internal IP
+```bash
+gcloud compute instances describe lifecycle-demo-vm --zone=us-central1-a \
+    --format="yaml(status, networkInterfaces[0].networkIP, networkInterfaces[0].accessConfigs[0].natIP)"
+```
+
+#### Expected Verification Output (Internal IP Identical, NEW Ephemeral External IP Allocated):
+```yaml
+accessConfigs:
+- natIP: 35.202.88.19
+networkIP: 10.1.0.2
+status: RUNNING
+```
+
+---
+
+### 5. Provision Private VM Instance Without External IP (--no-address)
+
+For backend databases and internal microservices requiring zero public attack surface, create VMs with `--no-address`.
+
+```bash
+gcloud compute instances create private-backend-db \
+    --zone=us-central1-a \
+    --machine-type=n2-standard-4 \
+    --subnet=prod-subnet-us-central1 \
+    --no-address
+```
+
+#### Expected Terminal Output:
+```text
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/zones/us-central1-a/instances/private-backend-db].
+NAME                ZONE           MACHINE_TYPE   PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP  STATUS
+private-backend-db  us-central1-a  n2-standard-4               10.1.0.3                  RUNNING
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+gcloud compute instances describe private-backend-db --zone=us-central1-a \
+    --format="value(networkInterfaces[0].accessConfigs)"
+```
+
+#### Expected Verification Output (Empty - Zero External Interface):
+```text
+[]
+```
+
+---
+
+### 6. Custom Static Internal IP Assignment Within Subnet Range
+
+```bash
+gcloud compute instances create custom-ip-vm \
+    --zone=us-central1-a \
+    --machine-type=e2-micro \
+    --subnet=prod-subnet-us-central1 \
+    --private-network-ip=10.1.0.25
+```
+
+#### Expected Terminal Output:
+```text
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/zones/us-central1-a/instances/custom-ip-vm].
+NAME          ZONE           MACHINE_TYPE  PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP    STATUS
+custom-ip-vm  us-central1-a  e2-micro                   10.1.0.25    34.122.99.12   RUNNING
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+gcloud compute instances describe custom-ip-vm --zone=us-central1-a --format="value(networkInterfaces[0].networkIP)"
+```
+
+#### Expected Verification Output:
+```text
+10.1.0.25
+```
+
+---
+
 ## Category 7: Bring Your Own IP (BYOIP) & Internal DNS Verification
 
 ### 1. Provision BYOIP Public Advertised Prefix (PAP) (/24 Minimum Block)

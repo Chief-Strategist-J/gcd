@@ -1,6 +1,6 @@
 # VPC Networks & Subnets: High-Level & Low-Level Design Architecture
 
-This document presents the **High-Level Design (HLD)** and **Low-Level Design (LLD)** for Google Cloud Platform (GCP) Virtual Private Cloud (VPC) Networks, Regional Subnetworks, IP Address Allocation, Internal DNS Scoping, External IP Billing Mechanics, and BYOIP.
+This document presents the **High-Level Design (HLD)** and **Low-Level Design (LLD)** for Google Cloud Platform (GCP) Virtual Private Cloud (VPC) Networks, Regional Subnetworks, IP Address Allocation, Internal DNS Scoping, External IP Billing Mechanics, BYOIP, and VM Stop/Start Lifecycle Behaviors.
 
 ---
 
@@ -235,3 +235,52 @@ graph TD
 1. **Minimum Prefix Size**: Must be a **/24 or larger** IPv4 block (e.g. 256 public IPs). Prefixes smaller than `/24` (e.g. `/25` or `/28`) cannot be advertised globally via BGP over the public internet.
 2. **Global BGP Advertisement**: Google advertises the imported `/24` prefix globally using BGP Anycast from Google's edge points of presence.
 3. **Zero Downtime Migration**: Existing public IP reputations and whitelist entries are preserved when migrating on-premises services to GCP.
+
+---
+
+### H. VM Stop/Start State Machine & IP Retention / Release Mechanics
+
+When a VM instance undergoes a **Stop** and **Start** lifecycle transition, GCP handles its internal and external IP addresses according to strict state rules.
+
+```mermaid
+stateDiagram-v2
+    [*] --> RUNNING: gcloud compute instances create
+    
+    state RUNNING {
+        InternalIP: Internal IP Allocated (e.g. 10.1.0.2)
+        ExternalIP: Ephemeral External IP Allocated (e.g. 34.122.10.55)
+    }
+
+    RUNNING --> STOPPING: gcloud compute instances stop
+    
+    state STOPPING {
+        ShutdownScript: 90-Second Grace Period for Shutdown Scripts
+        SIGTERM: System sends SIGTERM then SIGKILL after 90s
+    }
+
+    STOPPING --> STOPPED: Shutdown Complete
+    
+    state STOPPED {
+        InternalIPRetained: Internal IP (10.1.0.2) RETAINED in DHCP lease table
+        EphemeralReleased: Ephemeral External IP (34.122.10.55) RELEASED to GCP Pool
+        StaticRetained: Reserved Static External IP (if configured) RETAINED
+    }
+
+    STOPPED --> STARTING: gcloud compute instances start
+
+    state STARTING {
+        InternalIPPreserved: Internal IP (10.1.0.2) PRESERVED
+        NewEphemeralAllocated: NEW Ephemeral External IP (e.g. 35.202.88.19) Allocated from GCP Pool
+    }
+
+    STARTING --> RUNNING: VM Booted
+```
+
+#### Key Technical Rules of VM Stop/Start & Capacity:
+1. **90-Second Shutdown Grace Period**: Upon issuing `gcloud compute instances stop`, GCP allows guest shutdown scripts up to **90 seconds** to complete before forcefully terminating execution (`SIGKILL`).
+2. **Internal IP Retention**: The internal IP address **is NOT released** when a VM stops. It remains bound to the stopped instance so dependencies referencing `10.1.0.2` do not break upon restart.
+3. **Ephemeral External IP Mutation**: An Ephemeral External IP **is released immediately** upon VM stop. When the instance starts back up, it receives a **brand-new external IP address** from the GCP public pool.
+4. **Three Layers of Instance Capacity Limits**:
+   - **Subnet CIDR Capacity**: Total IPs defined by mask (e.g. `/20` = 4,096 IPs).
+   - **Network Instance Quota**: Project-level limit on max active instances per VPC network (default: 15,000 instances per network).
+   - **Physical Zone Hardware Limits**: Even if CIDR and Quota space exist, deployment can fail with `ZONE_RESOURCE_POOL_EXHAUSTED` if physical server racks in the target zone are temporarily out of capacity.
