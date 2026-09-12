@@ -13,6 +13,7 @@ Welcome to the **Google Cloud Virtual Private Cloud (VPC) Deep-Dive Architecture
 | [**3. Stateful Firewall Engine Deep Dive**](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/firewall-deep-dive.md) | Firewall Filtering & Security Enforcement | Distributed Connection Tracking Engine (`conntrack`), Priority Evaluation (0-65535), Deny-Override, Target Tags, Service Accounts, Hierarchical Policies, Packet Drop Flowchart. |
 | [**4. Compute & Network Integration**](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/compute-network-integration.md) | Hypervisor & VM Connectivity | Virtual Network Interfaces (vNICs), Subnet CIDR Binding, 4 Reserved Subnet IPs, 1:1 NAT Transparency, Metadata Server (`169.254.169.254`), DHCP, Zonal DNS, Multi-NIC Architecture. |
 | [**5. Operations & Troubleshooting Manual**](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/commands-and-troubleshooting.md) | CLI Commands & Diagnostic Manual | `gcloud compute` CLI, Network Intelligence Center Connectivity Tests, VPC Flow Logs, Packet Mirroring, Diagnostic Error Resolution Matrix. |
+| [**6. Hands-On Configuration Guide**](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/hands-on-network-configuration-guide.md) | Step-by-Step Practical Blueprints | 6 real-world deployment scenarios: Custom VPC, Auto-to-Custom conversion, Cloud NAT, VPC Peering, Multi-NIC, PSC. |
 
 ---
 
