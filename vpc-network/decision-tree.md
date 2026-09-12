@@ -1,6 +1,6 @@
 # VPC Networks & Subnets: Decision Trees
 
-This guide provides visual decision trees (Mermaid flowcharts & ASCII text decision paths) for selecting VPC network modes, sizing subnets, planning non-downtime CIDR expansions, and choosing inter-VPC and hybrid networking strategies.
+This guide provides visual decision trees (Mermaid flowcharts & ASCII text decision paths) for selecting VPC network modes, sizing subnets, planning non-downtime CIDR expansions, external IP strategies, and BYOIP.
 
 ---
 
@@ -75,4 +75,46 @@ flowchart TD
     style GLOBAL_FIBER fill:#34A853,color:#fff
     style EDGE_ROUTER fill:#EA4335,color:#fff
     style PEERING_ROUTE fill:#4285F4,color:#fff
+```
+
+---
+
+## 4. External IP Address & BYOIP Strategy Decision Tree
+
+```mermaid
+flowchart TD
+    EXT_START["Evaluate External Facing Requirements"] --> FACING{"Does the workload require direct public internet access?"}
+
+    FACING -- "No (Backend DB / Internal API)" --> NO_EXT["No External IP<br/>- Access via Cloud NAT for outbound<br/>- Connect via IAP SSH for management<br/>- Zero public attack surface"]
+
+    FACING -- "Yes (Public Web / Load Balancer)" --> OWN_IP{"Do you own custom public IPv4 prefixes?"}
+    OWN_IP -- "No (Use GCP Managed IPs)" --> STATIC_REQ{"Does the public IP need to remain constant across restarts?"}
+    STATIC_REQ -- "No (Dynamic / Temporary)" --> EPHEMERAL["Ephemeral External IP<br/>- Free in-use, released on instance termination"]
+    STATIC_REQ -- "Yes (DNS A-record / Firewall Whitelist)" --> RESERVED_STATIC["Reserved Static External IP<br/>- Must keep attached to running VM to avoid unassigned penalty fee"]
+
+    OWN_IP -- "Yes (Owned Public IPv4 Block)" --> SIZE_CHECK{"Is the owned block /24 or larger?"}
+    SIZE_CHECK -- "Yes (/24 block or larger)" --> BYOIP["Bring Your Own IP (BYOIP)<br/>- Provision Public Advertised Prefix (PAP)<br/>- Global BGP Anycast announcement"]
+    SIZE_CHECK -- "No (Smaller than /24, e.g. /28)" --> BYOIP_FAIL["Ineligible for BYOIP!<br/>BGP requires /24 minimum prefix. Must use GCP Public IPs"]
+
+    style NO_EXT fill:#34A853,color:#fff
+    style RESERVED_STATIC fill:#FBBC05,color:#333
+    style BYOIP fill:#4285F4,color:#fff
+    style BYOIP_FAIL fill:#EA4335,color:#fff
+```
+
+---
+
+## 5. Internal DNS Resolution Boundary Decision Tree
+
+```mermaid
+flowchart TD
+    DNS_START["Internal Hostname Resolution"] --> TARGET_VPC{"Is the target VM in the same VPC network?"}
+
+    TARGET_VPC -- "Yes (Same VPC)" --> GCP_DNS["Automatic GCP Internal DNS Resolution<br/>- Resolves 'vm-name.zone.c.PROJECT.internal'<br/>- Handled by Metadata server 169.254.169.254"]
+    TARGET_VPC -- "No (Different VPC / On-Premises)" --> CROSS_DNS{"Is Cloud DNS Private Zone or Peering set up?"}
+    CROSS_DNS -- "Yes" --> PRIVATE_ZONE["Cloud DNS Private Zone Resolution<br/>- Resolves cross-VPC internal hostnames"]
+    CROSS_DNS -- "No" --> DNS_FAIL["Internal DNS Resolution Fails!<br/>GCP Internal DNS is strictly scoped to a single VPC network"]
+
+    style GCP_DNS fill:#34A853,color:#fff
+    style DNS_FAIL fill:#EA4335,color:#fff
 ```

@@ -1,6 +1,6 @@
 # VPC Networks & Subnets: Complete Operations & Verification Manual
 
-This document is an operational reference manual for Google Cloud Virtual Private Cloud (VPC) Networks, Subnets, Firewall Rules, and IP Address Management.
+This document is an operational reference manual for Google Cloud Virtual Private Cloud (VPC) Networks, Subnets, Firewall Rules, IP Address Management, and Bring Your Own IP (BYOIP).
 
 Every command snippet includes:
 1. **Command to Execute**
@@ -15,8 +15,9 @@ Every command snippet includes:
 3. [Category 3: Zero-Downtime Subnet IP Range Expansion](#category-3-zero-downtime-subnet-ip-range-expansion)
 4. [Category 4: Dual-Stack IPv4 & IPv6 Subnet Provisioning](#category-4-dual-stack-ipv4--ipv6-subnet-provisioning)
 5. [Category 5: VPC Firewall Rules & Baseline Security Policies](#category-5-vpc-firewall-rules--baseline-security-policies)
-6. [Category 6: Static Internal & External IP Address Allocation](#category-6-static-internal--external-ip-address-allocation)
-7. [Category 7: Exhaustive Failure Diagnosis & Resolution Matrix](#category-7-exhaustive-failure-diagnosis--resolution-matrix)
+6. [Category 6: Static Internal, External & Ephemeral IP Management](#category-6-static-internal-external--ephemeral-ip-management)
+7. [Category 7: Bring Your Own IP (BYOIP) & Internal DNS Verification](#category-7-bring-your-own-ip-byoip--internal-dns-verification)
+8. [Category 8: Exhaustive Failure Diagnosis & Resolution Matrix](#category-8-exhaustive-failure-diagnosis--resolution-matrix)
 
 ---
 
@@ -299,41 +300,138 @@ targetTags:
 
 ---
 
-## Category 6: Static Internal & External IP Address Allocation
+## Category 6: Static Internal, External & Ephemeral IP Management
 
-### 1. Reserve Static Regional Internal IP Address
+### 1. Reserve Static Regional External IP Address
 
 ```bash
-gcloud compute addresses create internal-db-ip \
+gcloud compute addresses create prod-web-static-ip \
     --region=us-central1 \
-    --subnet=prod-subnet-us-central1 \
-    --addresses=10.1.0.50
+    --network-tier=PREMIUM
 ```
 
 #### Expected Terminal Output:
 ```text
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/addresses/internal-db-ip].
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/addresses/prod-web-static-ip].
 ```
 
 #### How to Verify Configuration Correctness:
 ```bash
-gcloud compute addresses describe internal-db-ip --region=us-central1 --format="yaml(name, address, addressType, status)"
+gcloud compute addresses describe prod-web-static-ip --region=us-central1 --format="yaml(name, address, status)"
 ```
 
 #### Expected Verification Output:
 ```yaml
-address: 10.1.0.50
-addressType: INTERNAL
-name: internal-db-ip
+address: 34.122.45.101
+name: prod-web-static-ip
 status: RESERVED
 ```
 
 ---
 
-## Category 7: Exhaustive Failure Diagnosis & Resolution Matrix
+### 2. Promote Existing Ephemeral External IP to Static External IP
+
+```bash
+# Promote dynamic ephemeral IP currently assigned to VM to permanent static status
+gcloud compute addresses create promoted-static-ip \
+    --region=us-central1 \
+    --addresses=34.122.10.55
+```
+
+#### Expected Terminal Output:
+```text
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/addresses/promoted-static-ip].
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+gcloud compute addresses describe promoted-static-ip --region=us-central1 --format="value(status)"
+```
+
+#### Expected Verification Output:
+```text
+IN_USE
+```
+
+---
+
+### 3. Audit & Release Unassigned Static External IPs to Eliminate Surcharge Billing
+
+Unassigned reserved static IPs incur a penalty hourly rate. Use this audit command to list and purge unassigned IPs.
+
+```bash
+# List all reserved static external IPs NOT attached to any VM or Forwarding Rule
+gcloud compute addresses list \
+    --filter="status=RESERVED AND users:*" \
+    --format="table(name, region, address, status)"
+```
+
+#### Expected Terminal Output (Unassigned Penalty IPs Found):
+```text
+NAME                     REGION       ADDRESS        STATUS
+abandoned-legacy-ip      us-central1  35.202.91.12   RESERVED
+unused-test-ip           us-central1  34.122.88.90   RESERVED
+```
+
+#### Remediation: Release Unassigned Static IPs to Stop Billing Surcharges
+```bash
+gcloud compute addresses delete abandoned-legacy-ip unused-test-ip --region=us-central1 --quiet
+```
+
+---
+
+## Category 7: Bring Your Own IP (BYOIP) & Internal DNS Verification
+
+### 1. Provision BYOIP Public Advertised Prefix (PAP) (/24 Minimum Block)
+
+```bash
+gcloud compute public-advertised-prefixes create my-company-byoip-pap \
+    --dns-verification-ip=198.51.100.1 \
+    --range=198.51.100.0/24
+```
+
+#### Expected Terminal Output:
+```text
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/publicAdvertisedPrefixes/my-company-byoip-pap].
+NAME                  PREFIX           STATUS
+my-company-byoip-pap  198.51.100.0/24  INITIAL
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+gcloud compute public-advertised-prefixes describe my-company-byoip-pap --format="yaml(name, ipCidrRange, status)"
+```
+
+#### Expected Verification Output:
+```yaml
+ipCidrRange: 198.51.100.0/24
+name: my-company-byoip-pap
+status: INITIALIZED
+```
+
+---
+
+### 2. Verify Network-Scoped Internal DNS Resolution Inside VM
+
+```bash
+# Execute internal DNS lookup inside VM instance
+gcloud compute ssh vm-1 --zone=us-central1-a --command="dig +short vm-2.us-central1-a.c.YOUR_PROJECT.internal"
+```
+
+#### Expected Terminal Output:
+```text
+10.10.0.3
+```
+
+---
+
+## Category 8: Exhaustive Failure Diagnosis & Resolution Matrix
 
 | Error Code / Status | Root Cause | Diagnosis Command | Immediate Resolution Command |
 | :--- | :--- | :--- | :--- |
+| **`UNASSIGNED_STATIC_IP_SURCHARGE`** | Static external IP reserved but not attached to running VM, triggering penalty billing rate. | `gcloud compute addresses list --filter="status=RESERVED AND users:*"` | Attach static IP to active VM or release address: `gcloud compute addresses delete IP_NAME`. |
+| **`BYOIP_PREFIX_TOO_SMALL`** | Attempted BYOIP PAP creation on subnet prefix smaller than `/24` (e.g. `/25` or `/28`). | `gcloud compute public-advertised-prefixes describe PAP` | BYOIP requires `/24` minimum prefix for global BGP Anycast routing. Use block $\ge$ `/24`. |
+| **`INTERNAL_DNS_CROSS_VPC_FAILED`** | Attempted internal DNS lookup for VM in another VPC network. | `gcloud compute ssh VM --command="dig HOST.c.PROJECT.internal"` | Internal DNS is strictly scoped to a single VPC network. Set up Cloud DNS Private Zones for cross-VPC DNS. |
 | **`IP_SPACE_EXHAUSTED`** | All available host IPs in subnet CIDR block consumed by running instances. | `gcloud compute instances list --filter="subnet:SUBNET"` | Expand subnet live: `gcloud compute networks subnets expand-ip-range SUBNET --prefix-length=NEW_MASK` (e.g. `/29` to `/23`). |
 | **`INVALID_CIDR_RANGE` / Overlap** | Subnet IP range overlaps with another subnet in the same VPC or peered network. | `gcloud compute networks subnets list --network=VPC_NAME` | Assign non-overlapping RFC 1918 CIDR block (e.g., `10.2.0.0/24`). |
 | **`CANNOT_SHRINK_SUBNET`** | Attempted to expand range with larger prefix mask (e.g. `/20` to `/24`). | `gcloud compute networks subnets describe SUBNET` | Subnet expansion is one-way. Pass smaller prefix number (e.g., `/20` or `/16`). |

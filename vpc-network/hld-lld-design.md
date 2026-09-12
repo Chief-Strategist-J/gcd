@@ -1,6 +1,6 @@
 # VPC Networks & Subnets: High-Level & Low-Level Design Architecture
 
-This document presents the **High-Level Design (HLD)** and **Low-Level Design (LLD)** for Google Cloud Platform (GCP) Virtual Private Cloud (VPC) Networks, Regional Subnetworks, IP Address Allocation, and Connectivity Mechanics.
+This document presents the **High-Level Design (HLD)** and **Low-Level Design (LLD)** for Google Cloud Platform (GCP) Virtual Private Cloud (VPC) Networks, Regional Subnetworks, IP Address Allocation, Internal DNS Scoping, External IP Billing Mechanics, and BYOIP.
 
 ---
 
@@ -149,3 +149,89 @@ Custom VPC networks support **Dual-Stack** configuration:
 - **IPv4 Range**: Private internal RFC 1918 CIDR assigned to subnets and VMs.
 - **IPv6 Range**: Public or internal `/64` IPv6 range assigned to subnets (`/96` mask per VM instance).
 - VMs can communicate over IPv4 and IPv6 simultaneously without NAT gateway translation.
+
+---
+
+### E. Internal DHCP & Network-Scoped Internal DNS Resolution
+
+Every VM created in Google Cloud receives an **Internal IP address** allocated via DHCP. Simultaneously, Google Cloud's metadata server registers the VM's symbolic hostname in an **Internal DNS service**.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant VM_A as VM-A (web-app-1)
+    participant Metadata as Internal DHCP & DNS Metadata (169.254.169.254)
+    participant VM_B as VM-B (database-1)
+
+    Note over VM_A, Metadata: VM Startup & Internal IP Registration
+    VM_A->>Metadata: Request DHCP lease on boot
+    Metadata-->>VM_A: Assign Internal IP: 10.1.0.2 + Gateway: 10.1.0.1
+    Metadata->>Metadata: Register DNS: web-app-1.us-central1-a.c.PROJECT_ID.internal -> 10.1.0.2
+
+    Note over VM_A, VM_B: Internal DNS Resolution Scoped to Same VPC Network
+    VM_A->>Metadata: Lookup 'database-1.us-central1-a.c.PROJECT_ID.internal'
+    Metadata-->>VM_A: Return 10.1.0.3 (Internal IP of VM-B)
+    VM_A->>VM_B: Connect to 10.1.0.3:5432 via Private Global Fiber
+```
+
+#### Internal DNS Scope Boundary Rules:
+1. **Network Scope Boundary**: Internal DNS resolution operates **strictly within the same VPC network**.
+2. **Cross-VPC DNS Boundary**: A VM in `VPC-1` **cannot** natively resolve the internal hostname of a VM in `VPC-2` via internal DNS, even if external IPs are reachable, unless Cloud DNS Private Zones or VPC Peering with DNS sharing is configured.
+3. **Symbolic FQDN Format**: `[INSTANCE_NAME].[ZONE].c.[PROJECT_ID].internal`
+
+---
+
+### F. Ephemeral vs Static External IP Lifecycle & Unassigned Surcharge Mechanics
+
+External IP addresses are optional. GCP provides two categories of public external IPs:
+
+```text
+┌──────────────────────────────────────┬────────────────────────────────────────────────────────────────────────┐
+│ External IP Type                     │ Lifecycle Behavior & Cost Model                                        │
+├──────────────────────────────────────┼────────────────────────────────────────────────────────────────────────┤
+│ Ephemeral External IP                │ - Allocated automatically from GCP public IP pool upon instance boot.  │
+│                                      │ - Released back to pool when instance is STOPPED or DELETED.           │
+│                                      │ - Standard in-use hourly rate while VM is running.                      │
+├──────────────────────────────────────┼────────────────────────────────────────────────────────────────────────┤
+│ Static External IP (Assigned)        │ - Permanently reserved IP bound to a running VM or forwarding rule.    │
+│                                      │ - Retained across VM restarts and stops.                               │
+│                                      │ - Standard in-use hourly rate.                                         │
+├──────────────────────────────────────┼────────────────────────────────────────────────────────────────────────┤
+│ Static External IP (UNASSIGNED)      │ - Reserved static IP NOT attached to any active running VM/rule.       │
+│                                      │ - PENALTY BILLING: Charged at a HIGHER hourly rate than in-use IPs    │
+│                                      │   to discourage public IP address hoarding.                            │
+└──────────────────────────────────────┴────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### G. Bring Your Own IP (BYOIP) Architecture
+
+Enterprise customers owning publicly routable IPv4 address space can import their own IP prefixes into Google Cloud using **Bring Your Own IP (BYOIP)**.
+
+```mermaid
+graph TD
+    subgraph Customer Ownership
+        ARIN["ARIN / RIPE / APNIC Registry<br/>Customer owns prefix block"]
+    end
+
+    subgraph Google Cloud Global Infrastructure
+        PAP["Public Advertised Prefix (PAP)<br/>Minimum Requirement: /24 block or larger"]
+        PDP["Public Delegated Prefix (PDP)<br/>Sub-allocated /28 or /24 per region"]
+        BGP["Google Global Anycast BGP Routers<br/>Advertises /24 prefix to global Internet"]
+        VPC["VPC Resources<br/>Assigns BYOIP addresses to VMs & Load Balancers"]
+    end
+
+    ARIN -->|ROA Verification & LOA Document| PAP
+    PAP --> PDP
+    PDP --> VPC
+    BGP -->|Global BGP Anycast Announcement| PAP
+
+    style PAP fill:#4285F4,stroke:#333,stroke-width:2px,color:#fff
+    style BGP fill:#34A853,stroke:#333,stroke-width:2px,color:#fff
+```
+
+#### BYOIP Rules & Eligibility:
+1. **Minimum Prefix Size**: Must be a **/24 or larger** IPv4 block (e.g. 256 public IPs). Prefixes smaller than `/24` (e.g. `/25` or `/28`) cannot be advertised globally via BGP over the public internet.
+2. **Global BGP Advertisement**: Google advertises the imported `/24` prefix globally using BGP Anycast from Google's edge points of presence.
+3. **Zero Downtime Migration**: Existing public IP reputations and whitelist entries are preserved when migrating on-premises services to GCP.
