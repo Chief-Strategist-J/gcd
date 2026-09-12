@@ -527,6 +527,27 @@ spec:
 
 ---
 
+## Scenario 8: Connectivity Scope Isolation Summary Matrix
+
+For quick reference during operational deployment and troubleshooting, the table below contrasts connectivity behaviors inside the **Same Network** vs. **Other Networks** across Zonal, Regional, Cross-VPC, and External boundaries:
+
+| Connection Scope | Target Boundary | Network Type | Internal IP Connectivity | Typical Egress Fee | Primary Security / Enforcement Mechanism |
+|---|---|---|---|---|---|
+| **Intra-Zone** | Same Subnet, Same Zone | Same VPC | **ALLOWED** (Direct host encap) | **$0.00 / GB** (Free) | Stateful VPC Firewall rules at VM vNIC |
+| **Cross-Zone** | Same Subnet, Diff Zone | Same VPC | **ALLOWED** (Regional subnet) | **$0.01 / GB** | VPC Firewall target tags / service accounts |
+| **Cross-Region** | Diff Subnet, Diff Region | Same VPC | **ALLOWED** (Global B4 fiber) | **$0.02 - $0.12 / GB** | Global VPC Firewall policies at vNIC |
+| **Unpeered Cross-VPC** | Diff VPC Network | Other VPC | **BLOCKED (`ENETUNREACH`)** | N/A (Blocked) | Soft-switch route isolation; no default route |
+| **Peered Cross-VPC** | Peered VPC Network | Other VPC | **ALLOWED** (Direct SDN peering) | Standard Cross-Zone/Region rates | Custom route export/import filters & FW rules |
+| **Shared VPC** | Host $\leftrightarrow$ Service Project | Same Shared VPC | **ALLOWED** (Native VPC) | Standard regional/zonal rates | Shared VPC Network Admin IAM permissions |
+| **Hybrid Cloud** | On-Prem / AWS / Azure | External Network | **ALLOWED** (Cloud VPN / Interconnect) | Egress rate + Tunnel fee | IPsec Encryption, BGP Cloud Router policies |
+| **Private Service Connect** | Producer SaaS / Service | Other VPC | **ALLOWED (1-Way NAT Endpoint)** | $0.01 / GB + Endpoint fee | Unidirectional 1-Way service IP mapping |
+| **Cloud NAT Gateway** | Public Internet | External Network | **ALLOWED Outbound Only** | Internet Egress + NAT Processing fee | Stateful NAT translation; unsolicited ingress dropped |
+
+> [!NOTE]
+> For a full architectural deep-dive into packet encapsulation paths, conntrack engines, and latency profiles across these scopes, refer to [Compute & Network Integration](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/compute-network-integration.md#8-master-matrix-connectivity-scopes-same-network-vs-other-networks).
+
+---
+
 ## Related Workspace Documents
 
 - [Case Study Index](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/README.md)
@@ -536,4 +557,5 @@ spec:
 - [Compute & Network Integration](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/compute-network-integration.md)
 - [Commands & Diagnostics Manual](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/commands-and-troubleshooting.md)
 - [Kubernetes Shell Commands Manual](file:///home/btpl-lap-22/live/gcd/kubernetes/shell-commands.md)
+
 
