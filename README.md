@@ -29,6 +29,13 @@ gcd/
 │   ├── shell-commands.md             # In-Depth CLI Manual & Error Matrix (`kubectl`)
 │   └── references.md                 # Official Kubernetes Documentation Links & Best Practices
 │
+├── bigquery/                         # Feature 4: BigQuery (Enterprise Data Warehouse)
+│   ├── README.md                     # BigQuery Feature Index
+│   ├── hld-lld-design.md             # Dremel Engine Architecture & Capacitor Storage Mechanics
+│   ├── decision-tree.md              # ASCII & Visual Decision Trees (Partitioning vs Clustering)
+│   ├── shell-commands.md             # In-Depth CLI Manual & Error Matrix (`bq`)
+│   └── references.md                 # Official BigQuery Documentation Links & SQL Best Practices
+│
 └── README.md                         # Master Workspace Index (This File)
 ```
 
@@ -57,3 +64,11 @@ gcd/
 * 🌳 **[ASCII & Visual Decision Trees (`kubernetes/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/kubernetes/decision-tree.md)**
 * 💻 **[Shell Command Reference & Failure Resolutions (`kubernetes/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/kubernetes/shell-commands.md)**
 * 🔗 **[Official References & Links (`kubernetes/references.md`)](file:///home/btpl-lap-22/live/gcd/kubernetes/references.md)**
+
+---
+
+### 📊 Feature 4: BigQuery (`/bigquery/`)
+* 📐 **[HLD & LLD Design (`bigquery/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/bigquery/hld-lld-design.md)**
+* 🌳 **[ASCII & Visual Decision Trees (`bigquery/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/bigquery/decision-tree.md)**
+* 💻 **[Shell Command Reference & Failure Resolutions (`bigquery/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/bigquery/shell-commands.md)**
+* 🔗 **[Official References & Links (`bigquery/references.md`)](file:///home/btpl-lap-22/live/gcd/bigquery/references.md)**
