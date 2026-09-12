@@ -663,6 +663,23 @@ gcloud logging read 'resource.type="nat_gateway" AND resource.labels.gateway_nam
     --format="json(timestamp, jsonPayload.connection, jsonPayload.allocation_status)"
 ```
 
+### Step 8.6: Lab Command & Parameter Master Breakdown
+
+| Task & Command Step | CLI Flags & Options | Exact Technical Purpose & Mechanics | Expected Behavior & Verification Check |
+|---|---|---|---|
+| **VPC & Subnet Creation** | `gcloud compute networks subnets create privatenet-us --range=10.130.0.0/20` | Allocates custom CIDR block `10.130.0.0/20` in target region. **PGA is OFF by default**. | Subnet created with 4,091 usable RFC 1918 IPs. |
+| **IAP Firewall Rule** | `gcloud compute firewall-rules create privatenet-allow-ssh --source-ranges=35.235.240.0/20 --allow=tcp:22` | Opens TCP port 22 strictly to Google's **Identity-Aware Proxy (IAP) netblock `35.235.240.0/20`**. | Permits secure SSH connections via `gcloud compute ssh --tunnel-through-iap` without exposing port 22 to public internet. |
+| **Private VM Provisioning** | `gcloud compute instances create vm-internal --no-address` | **Omits Ephemeral External IP allocation**. VM receives internal IP (`10.130.0.2`) only. | `External IP` column in Console shows `None`. VM is completely isolated from direct internet inbound access. |
+| **IAP SSH & Initial Ping Test** | `gcloud compute ssh vm-internal --tunnel-through-iap` followed by `ping -c 2 www.google.com` | Establishes secure proxy tunnel through IAP. Ping attempts ICMP to external IP. | SSH succeeds via IAP. **Ping fails (100% loss)** because `vm-internal` lacks public IP & NAT. |
+| **GCS Bucket Test (PGA OFF)** | `gcloud storage cp gs://$MY_BUCKET/*.svg .` | Attempts to reach Cloud Storage API (`storage.googleapis.com` / `142.250.x.x`). | **Hangs / Times out** because Private Google Access is disabled on subnet `privatenet-us`. |
+| **Enable PGA on Subnet** | `gcloud compute networks subnets update privatenet-us --enable-private-ip-google-access` | Programs Andromeda host hypervisors on `privatenet-us` to route Google API traffic over Google's internal network. | Private Google Access toggled to `On`. |
+| **GCS Bucket Test (PGA ON)** | `gcloud storage cp gs://$MY_BUCKET/*.svg .` | Retries transfer to Cloud Storage via internal route `0.0.0.0/0` next-hop default internet gateway. | **Succeeds!** File `access.svg` downloads successfully without requiring a public IP address. |
+| **Apt Update Test (NAT OFF)** | `sudo apt-get update` | Attempts TCP connections to third-party Debian repositories (`deb.debian.org`). | **Hangs / Fails**. PGA only grants access to Google APIs, NOT general internet package mirrors. |
+| **Cloud NAT Gateway Setup** | `gcloud compute routers nats create nat-config --auto-allocate-nat-external-ips --nat-all-subnet-ip-ranges` | Configures regional Cloud NAT on `nat-router` to perform SNAT for all subnets in the region. | Status changes to `Running`. Private VMs perform outbound SNAT via dynamically allocated public IPs. |
+| **Apt Update Test (NAT ON)** | `sudo apt-get update` | Retries package index update over Cloud NAT Gateway. | **Succeeds!** Output finishes with `Reading package lists... Done`. |
+| **Cloud NAT Logging** | `--enable-logging --log-config-filter=ALL` | Captures log events for **NAT connection creation** and **port exhaustion errors** to Cloud Logging. | Logs viewable in Logs Explorer under `resource.type="nat_gateway"`. |
+
+
 ---
 
 ## Scenario 9: Connectivity Scope Isolation Summary Matrix
