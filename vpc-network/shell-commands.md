@@ -300,9 +300,147 @@ status: RUNNING
 
 ---
 
+### 3. Promote Existing Ephemeral External IP Address to Static External IP
+
+```bash
+gcloud compute addresses create promoted-static-ip \
+    --region=us-central1 \
+    --addresses=35.202.88.19
+```
+
+#### Expected Terminal Output:
+```text
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/addresses/promoted-static-ip].
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+gcloud compute addresses describe promoted-static-ip --region=us-central1 --format="yaml(name, address, status)"
+```
+
+#### Expected Verification Output:
+```yaml
+address: 35.202.88.19
+name: promoted-static-ip
+status: IN_USE
+```
+
+---
+
+### 4. Audit & Release Unassigned Static External IPs to Eliminate Surcharge Billing
+
+```bash
+gcloud compute addresses list \
+    --filter="status=RESERVED AND users:*" \
+    --format="table(name, region, address, status)"
+```
+
+#### Expected Terminal Output:
+```text
+NAME                 REGION       ADDRESS        STATUS
+abandoned-legacy-ip  us-central1  34.122.10.55   RESERVED
+unused-test-ip       us-central1  35.202.99.11   RESERVED
+```
+
+#### How to Verify Configuration Correctness & Release Unassigned IPs:
+```bash
+gcloud compute addresses delete abandoned-legacy-ip unused-test-ip --region=us-central1 --quiet
+```
+
+#### Expected Verification Output:
+```text
+Deleted [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/addresses/abandoned-legacy-ip].
+Deleted [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/addresses/unused-test-ip].
+```
+
+---
+
+### 5. Provision Private VM Instance Without External IP (--no-address)
+
+```bash
+gcloud compute instances create private-backend-db \
+    --zone=us-central1-a \
+    --machine-type=n2-standard-4 \
+    --subnet=prod-subnet-us-central1 \
+    --no-address
+```
+
+#### Expected Terminal Output:
+```text
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/zones/us-central1-a/instances/private-backend-db].
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+gcloud compute instances describe private-backend-db --zone=us-central1-a \
+    --format="yaml(name, networkInterfaces[0].accessConfigs)"
+```
+
+#### Expected Verification Output:
+```yaml
+name: private-backend-db
+```
+
+---
+
+### 6. Custom Static Internal IP Assignment Within Subnet Range
+
+```bash
+gcloud compute instances create custom-ip-vm \
+    --zone=us-central1-a \
+    --machine-type=e2-micro \
+    --subnet=prod-subnet-us-central1 \
+    --private-network-ip=10.1.0.25
+```
+
+#### Expected Terminal Output:
+```text
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/zones/us-central1-a/instances/custom-ip-vm].
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+gcloud compute instances describe custom-ip-vm --zone=us-central1-a \
+    --format="value(networkInterfaces[0].networkIP)"
+```
+
+#### Expected Verification Output:
+```text
+10.1.0.25
+```
+
+---
+
 ## Category 7: Bring Your Own IP (BYOIP) & Internal DNS Verification
 
-### 1. Verify Network-Scoped Internal DNS Resolution Inside VM
+### 1. Provision BYOIP Public Advertised Prefix (PAP) (/24 Minimum Block)
+
+```bash
+gcloud compute public-advertised-prefixes create my-company-byoip-pap \
+    --dns-verification-ip=198.51.100.1 \
+    --range=198.51.100.0/24
+```
+
+#### Expected Terminal Output:
+```text
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/publicAdvertisedPrefixes/my-company-byoip-pap].
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+gcloud compute public-advertised-prefixes describe my-company-byoip-pap --format="yaml(name, ipCidrRange, status)"
+```
+
+#### Expected Verification Output:
+```yaml
+ipCidrRange: 198.51.100.0/24
+name: my-company-byoip-pap
+status: INITIAL
+```
+
+---
+
+### 2. Verify Network-Scoped Internal DNS Resolution Inside VM
 
 ```bash
 gcloud compute ssh vm-1 --zone=us-central1-a --command="dig +short vm-2.us-central1-a.c.YOUR_PROJECT.internal"
@@ -452,10 +590,68 @@ Creating firewall rule...done.
 
 ---
 
-## Category 12: Exhaustive Failure Diagnosis & Resolution Matrix
+## Category 12: Private Google Access & Egress Cost Optimization
+
+### 1. Enable Private Google Access on Subnet to Eliminate External Egress Charges
+
+When VMs without external IPs connect to Google APIs (Cloud Storage, BigQuery, Maps), Private Google Access routes traffic internally across Google's private backbone for $0.00/GB egress cost.
+
+```bash
+gcloud compute networks subnets update prod-subnet-us-central1 \
+    --region=us-central1 \
+    --enable-private-ip-google-access
+```
+
+#### Expected Terminal Output:
+```text
+Updated [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/subnetworks/prod-subnet-us-central1].
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+gcloud compute networks subnets describe prod-subnet-us-central1 \
+    --region=us-central1 \
+    --format="value(privateIpGoogleAccess)"
+```
+
+#### Expected Verification Output:
+```text
+True
+```
+
+---
+
+### 2. Audit Intra-Zone External IP Communication Leaks
+
+```bash
+gcloud compute instances list --format="table(name, zone, networkInterfaces[0].networkIP, networkInterfaces[0].accessConfigs[0].natIP)"
+```
+
+#### Expected Terminal Output:
+```text
+NAME               ZONE          PRIMARY_IP  EXTERNAL_IP
+web-frontend-vm-1  us-central1-a 10.1.0.2    35.202.88.19
+backend-api-vm-2   us-central1-a 10.1.0.3    34.122.10.55
+```
+
+#### How to Verify & Remediate:
+```bash
+# Test internal DNS connectivity to ensure internal communication is used instead of external IPs
+gcloud compute ssh web-frontend-vm-1 --zone=us-central1-a --command="curl -I http://backend-api-vm-2.us-central1-a.c.YOUR_PROJECT.internal"
+```
+
+#### Expected Verification Output:
+```text
+HTTP/1.1 200 OK
+```
+
+---
+
+## Category 13: Exhaustive Failure Diagnosis & Resolution Matrix
 
 | Error Code / Status | Root Cause | Diagnosis Command | Immediate Resolution Command |
 | :--- | :--- | :--- | :--- |
+| **`INTRAZONE_EXTERNAL_IP_COST_LEAK`** | Intra-zone VM traffic using External IPs is billed at Inter-Zone egress rate ($0.01/GB). | `gcloud compute instances list --format="yaml(name, networkInterfaces)"` | Reconfigure internal application configs to resolve internal DNS (`vm-2.zone.c.PROJECT.internal`) or internal IP (`10.x.x.x`). |
 | **`EXTERNAL_IP_NOT_IN_OS_IFCONFIG`** | Expected external IP to show inside VM OS `ifconfig`. | `gcloud compute ssh VM --command="ip addr show"` | Working as intended. GCP uses 1:1 hypervisor NAT. External IP is mapped transparently outside the VM OS. |
 | **`ALIAS_IP_CIDR_OVERLAP`** | Alias IP range conflicts with primary VM IP or another alias range. | `gcloud compute instances describe VM \| grep aliasIpRanges` | Assign secondary CIDR range from subnet that is not allocated to other VMs. |
 | **`ROUTE_DESTINATION_MISMATCH`** | Next hop instance specified in custom route is not in the same VPC or zone. | `gcloud compute routes describe ROUTE_NAME` | Ensure `--next-hop-instance` is running and attached to the target VPC network. |

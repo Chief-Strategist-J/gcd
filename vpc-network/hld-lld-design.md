@@ -436,3 +436,37 @@ graph TD
    - **Implied Deny Ingress (Priority 65535)**: Blocks all inbound traffic unless explicitly allowed.
    - **Implied Allow Egress (Priority 65535)**: Allows all outbound traffic from VMs unless explicitly denied.
 3. **Rule Components**: Direction (Ingress/Egress), Priority (0 to 65535), Target (Tags / Service Accounts), Source/Destination (CIDR / Tags / Service Accounts), Protocol/Port, Action (Allow / Deny).
+
+---
+
+### N. Network Pricing & Egress Traffic Cost Flow Architecture
+
+Understanding GCP network traffic billing mechanics is critical for architecture cost optimization.
+
+```mermaid
+graph TD
+    subgraph Ingress Traffic [$0.00 / GB]
+        EXT_IN["External Internet / On-Prem Traffic"] -->|Ingress to GCP VM| VM_RECV["VM Instance Receiving Traffic"]
+    end
+
+    subgraph Internal Egress Traffic
+        VM_SEND["VM Instance Sending Traffic"] -->|Intra-Zone Internal IP| SAME_ZONE["VM in Same Zone (Internal IP)<br/>$0.00 / GB"]
+        VM_SEND -->|Intra-Zone External IP| SAME_ZONE_EXT["VM in Same Zone (External IP)<br/>BILLED AS INTER-ZONE: $0.01 / GB"]
+        VM_SEND -->|Inter-Zone Internal IP| DIFF_ZONE["VM in Different Zone (Same Region)<br/>$0.01 / GB"]
+        VM_SEND -->|Inter-Region Internal IP| DIFF_REGION["VM in Different Region<br/>$0.02 - $0.12 / GB"]
+        VM_SEND -->|Private Google Access| GOOGLE_SVCS["Google Services (GCS, BQ, Maps)<br/>$0.00 / GB"]
+    end
+
+    style EXT_IN fill:#34A853,color:#fff
+    style SAME_ZONE fill:#34A853,color:#fff
+    style GOOGLE_SVCS fill:#34A853,color:#fff
+    style SAME_ZONE_EXT fill:#EA4335,color:#fff
+    style DIFF_ZONE fill:#FBBC05,color:#fff
+    style DIFF_REGION fill:#FBBC05,color:#fff
+```
+
+#### Cost Optimization Architectural Guidelines:
+1. **Always Use Internal IPs for Intra-Zone Traffic**: Intra-zone egress over internal IP is **$0.00/GB**. Sending intra-zone traffic via external IPs forces routing through external NAT, incurring a **$0.01/GB inter-zone surcharge**.
+2. **Enable Private Google Access**: Route traffic to Google Cloud APIs (Storage, BigQuery, KMS) internally via Private Google Access for **$0.00/GB egress cost**.
+3. **Release Unassigned Static IPs**: Unassigned static external IPs incur a hourly surcharge to prevent public IPv4 address hoarding.
+4. **Locate Microservices in Same Zone**: High-throughput inter-service traffic should be co-located within the same availability zone to avoid inter-zone network fees ($0.01/GB each way).
