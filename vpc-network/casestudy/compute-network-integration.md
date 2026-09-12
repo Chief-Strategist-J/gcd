@@ -593,6 +593,57 @@ gcloud compute networks subnets describe subnet-a \
 
 ---
 
+### 9.5 Master "What I CAN Connect To vs. What I CANNOT Connect To" Decision Matrix
+
+This master decision matrix provides an operational reference for cloud architects and network engineers to determine exactly what destinations a VM instance **CAN** reach and **CANNOT** reach under various network configurations.
+
+```mermaid
+graph TD
+    classDef can fill:#064E3B,stroke:#34D399,stroke-width:2px,color:#F8FAFC;
+    classDef cannot fill:#450A0A,stroke:#F87171,stroke-width:2px,color:#F8FAFC;
+    classDef vm fill:#0F172A,stroke:#38BDF8,stroke-width:2px,color:#F8FAFC;
+
+    subgraph ConfigMatrix ["PRIVATE VM CONNECTIVITY MATRIX (Internal IP Only: --no-address)"]
+        VM["Private VM: vm-internal<br/>(10.130.0.2)"]:::vm
+
+        subgraph CAN_CONNECT ["WHAT I CAN CONNECT TO"]
+            C1["Same VPC Internal VMs ($0/GB)"]:::can
+            C2["Peered / Shared VPC Internal VMs"]:::can
+            C3["Inbound SSH via IAP Tunnel (35.235.240.0/20)"]:::can
+            C4["Google APIs / GCS (IF PGA IS ON)"]:::can
+            C5["Public Internet Outbound (IF CLOUD NAT IS ON)"]:::can
+        end
+
+        subgraph CANNOT_CONNECT ["WHAT I CANNOT CONNECT TO"]
+            NC1["Unpeered Cross-VPC Networks (ENETUNREACH)"]:::cannot
+            NC2["Direct Inbound Internet Connections (No Public IP)"]:::cannot
+            NC3["Google APIs / GCS (IF PGA IS OFF)"]:::cannot
+            NC4["Public Internet Egress (IF CLOUD NAT IS OFF)"]:::cannot
+        end
+    end
+
+    VM --> C1
+    VM --> C2
+    VM --> C3
+    VM --> C4
+    VM --> C5
+
+    VM -.-x NC1
+    VM -.-x NC2
+    VM -.-x NC3
+    VM -.-x NC4
+```
+
+| Configuration Scenario | VM IP Allocation | Subnet PGA Status | Cloud NAT Status | What I CAN Connect To (Allowed Paths) | What I CANNOT Connect To (Blocked Paths) | Underlying Network Reason / Mechanics |
+|---|---|---|---|---|---|---|
+| **Scenario A: Isolated Private VM (Default)** | **Internal IP Only** (`--no-address`) | **OFF** (`false`) | **OFF** | 1. Other VMs in **Same VPC** (Intra/Cross-Zone, Cross-Region).<br/>2. Other VMs in **Peered VPCs** or **Shared VPC** (over RFC 1918 IPs).<br/>3. **Inbound SSH via IAP Tunnel** (`gcloud compute ssh --tunnel-through-iap` if FW allows `35.235.240.0/20`). | 1. **Public Internet Egress** (`ping www.google.com`, `sudo apt-get update` on `deb.debian.org`, external web servers).<br/>2. **Google APIs & Services** (`gs://$MY_BUCKET`, Cloud Storage, BigQuery, Pub/Sub).<br/>3. **Unpeered Cross-VPC Networks**.<br/>4. **Direct Inbound Internet Connections** (No public IP assigned). | No public IP and no default internet gateway route exists for external destinations. Host hypervisor drops packets (`ENETUNREACH`). |
+| **Scenario B: Private VM with Private Google Access (PGA)** | **Internal IP Only** (`--no-address`) | **ON** (`true`) | **OFF** | 1. **Google APIs & Services** (`storage.googleapis.com`, BigQuery, Secret Manager) over internal private route `142.250.x.x`.<br/>2. Internal VMs in **Same VPC**, **Peered VPC**, or **Shared VPC**.<br/>3. **Inbound SSH via IAP Tunnel**. | 1. **General Public Internet Egress** (`sudo apt-get update` on third-party repos, external sites `github.com`).<br/>2. **Unpeered Cross-VPC Networks**.<br/>3. **Direct Inbound Internet Connections**. | PGA routes destination IPs of Google API domains (`142.250.x.x`) privately over Google's backbone, but does NOT route general internet traffic. |
+| **Scenario C: Private VM with Cloud NAT Gateway** | **Internal IP Only** (`--no-address`) | **OFF** (`false`) | **ON** | 1. **General Public Internet Egress** (`sudo apt-get update`, OS patching, `curl ifconfig.me`, external web APIs).<br/>2. Internal VMs in **Same VPC**, **Peered VPC**, or **Shared VPC**.<br/>3. **Inbound SSH via IAP Tunnel**. | 1. **Direct Inbound Internet Connections** (Unsolicited inbound traffic from external internet users).<br/>2. **Unpeered Cross-VPC Networks**. | Cloud NAT performs **outbound SNAT only**. It does NOT implement inbound DNAT or port forwarding. Inbound internet scans are dropped. |
+| **Scenario D: Enterprise Secure Private VM (PGA + NAT)** | **Internal IP Only** (`--no-address`) | **ON** (`true`) | **ON** | 1. **Google APIs & Services** (via internal backbone route).<br/>2. **General Public Internet Egress** (via Cloud NAT Gateway SNAT).<br/>3. Internal VMs in **Same VPC**, **Peered VPC**, or **Shared VPC**.<br/>4. **Inbound SSH via IAP Tunnel**. | 1. **Direct Inbound Internet Connections** (Fully hidden behind NAT/IAP).<br/>2. **Unpeered Cross-VPC Networks** (Requires explicit VPC Peering / VPN). | **Gold Standard Private VM Setup**: Outbound updates & Google API access enabled without exposing VM to internet attacks. |
+| **Scenario E: Public VM (Default Compute Engine)** | **External IP Attached** | Irrelevant | Irrelevant | 1. **Public Internet Inbound & Outbound** (if firewall rules allow).<br/>2. **Google APIs & Services** (via public IP route).<br/>3. Internal VMs in **Same VPC** & **Peered VPC**. | 1. **Unpeered Cross-VPC Internal IPs** (Blocked by VPC soft-switch boundary). | 1:1 NAT mapping at Andromeda hypervisor. VM has full public connectivity subject to VPC firewall rules. |
+
+---
+
 ## Related Workspace Documents
 
 - [Case Study Index](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/README.md)
@@ -600,5 +651,6 @@ gcloud compute networks subnets describe subnet-a \
 - [Low-Level Packet Lifecycle (LLD)](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/lld-packet-lifecycle.md)
 - [Stateful Firewall Deep Dive](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/firewall-deep-dive.md)
 - [Commands & Diagnostics Manual](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/commands-and-troubleshooting.md)
+
 
 
