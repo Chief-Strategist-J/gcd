@@ -1,6 +1,6 @@
 # Operations, Diagnostic Commands & Troubleshooting Manual
 
-This document provides a comprehensive CLI manual (`gcloud compute`), detailed parameter-by-parameter technical definitions and rationale, diagnostic verification workflows using **Network Intelligence Center Connectivity Tests**, **VPC Flow Logs**, **Packet Mirroring**, and a **Troubleshooting Error Matrix** for GCP VPC networks.
+This document provides a comprehensive CLI manual (`gcloud compute`), detailed parameter-by-parameter technical definitions and rationale, advanced enterprise networking commands (Cloud NAT, VPC Peering, Private Service Connect, Network Firewall Policies), diagnostic verification workflows using **Network Intelligence Center Connectivity Tests**, **VPC Flow Logs**, **Packet Mirroring**, and a **Troubleshooting Error Matrix** for GCP VPC networks.
 
 ---
 
@@ -161,6 +161,84 @@ gcloud compute instances create mynet-us-vm \
 | `--tags` | Option | **Network Tags**: Instance string labels (`web-server`). | *None* | Attaches network metadata used by targeted firewall rules and custom route filters. |
 | `--service-account` | Option | **IAM Service Account**: Identity attached to VM. | *Default SA* | Assigns fine-grained IAM identity used for identity-based firewall rules and GCP API authentication. |
 | `--scopes` | Option | **API Access Scopes**: OAuth authorization scopes (`cloud-platform`). | *Default Scopes* | `cloud-platform` delegates full API access management to IAM roles attached to the Service Account. |
+
+---
+
+### 1.5 Advanced Enterprise Commands (Cloud NAT, VPC Peering, PSC, Policies)
+
+#### Command: Configure Cloud NAT Gateway (Outbound Internet Egress for Private VMs)
+```bash
+# 1. Create Cloud Router for BGP & NAT management
+gcloud compute routers create nat-router-us \
+    --network=privatenet \
+    --region=us-central1
+
+# 2. Create Cloud NAT Gateway attached to Cloud Router
+gcloud compute routers nats create nat-gw-us \
+    --router=nat-router-us \
+    --region=us-central1 \
+    --auto-allocate-nat-external-ips \
+    --nat-all-subnet-ip-ranges \
+    --enable-dynamic-port-allocation
+```
+
+##### Parameter Breakdown & Technical Rationale:
+
+| Parameter / Flag | Type | Definition & Purpose | Technical Rationale & Impact |
+| :--- | :--- | :--- | :--- |
+| `nat-gw-us` | Positional | **Cloud NAT Gateway Name**: Identifier string. | Unique handle for the managed NAT service. |
+| `--router` | Option | **Parent Cloud Router**: Associated Cloud Router. | Cloud NAT relies on Cloud Router control plane to program NAT state tables. |
+| `--auto-allocate-nat-external-ips` | Flag | **Automatic Public IP Pool**: Allocates regional public IPs. | Automatically provisions and scales public IP addresses as outbound connection volume grows. |
+| `--nat-all-subnet-ip-ranges` | Flag | **Subnet Traffic Scope**: Applies NAT to all subnets in region. | Allows all private VMs (without public IPs) across all subnets in `us-central1` to reach the Internet securely. |
+| `--enable-dynamic-port-allocation` | Flag | **Dynamic SNAT Port Allocation**: Allocates ports on demand. | Prevents SNAT port exhaustion during traffic bursts by dynamically increasing ports per VM. |
+
+---
+
+#### Command: Configure VPC Network Peering (Private Cross-VPC Routing)
+```bash
+gcloud compute networks peerings create peer-mynet-to-mgmt \
+    --network=mynetwork \
+    --peer-network=managementnet \
+    --auto-accept \
+    --export-custom-routes \
+    --import-custom-routes
+```
+
+##### Parameter Breakdown & Technical Rationale:
+
+| Parameter / Flag | Type | Definition & Purpose | Technical Rationale & Impact |
+| :--- | :--- | :--- | :--- |
+| `peer-mynet-to-mgmt` | Positional | **Peering Connection Name**: Unique handle. | Identifies the peering relationship entry. |
+| `--network` | Option | **Local VPC Network**: Originating VPC network. | Specifies local network initiating the peering link. |
+| `--peer-network` | Option | **Target Peer VPC Network**: Remote VPC network. | Connects both VPC routing tables privately over Google's SDN underlay. |
+| `--export-custom-routes` | Flag | **Export Local Custom Routes**: Shares static/BGP routes. | Advertises custom static routes (e.g. Cloud VPN routes) to the peer network. |
+| `--import-custom-routes` | Flag | **Import Remote Custom Routes**: Learns peer routes. | Integrates peer's custom routes into local VPC routing table automatically. |
+
+---
+
+#### Command: Configure Private Service Connect (PSC Endpoint for Google APIs)
+```bash
+# 1. Reserve internal IP for PSC
+gcloud compute addresses create psc-storage-ip \
+    --global \
+    --purpose=PRIVATE_SERVICE_CONNECT \
+    --addresses=10.128.10.100 \
+    --network=mynetwork
+
+# 2. Create Global Forwarding Rule for PSC
+gcloud compute forwarding-rules create psc-storage-forwarding-rule \
+    --global \
+    --network=mynetwork \
+    --address=psc-storage-ip \
+    --target-google-apis-bundle=all-apis
+```
+
+##### Parameter Breakdown & Technical Rationale:
+
+| Parameter / Flag | Type | Definition & Purpose | Technical Rationale & Impact |
+| :--- | :--- | :--- | :--- |
+| `--purpose=PRIVATE_SERVICE_CONNECT` | Option | **Address Intended Purpose**: Reserves IP for PSC. | Prevents normal VM dynamic DHCP allocation from taking `10.128.10.100`. |
+| `--target-google-apis-bundle` | Option | **API Service Bundle**: Accepts `all-apis` or `vpc-sc`. | Routes all Google Cloud API traffic privately to IP `10.128.10.100` via internal Andromeda routing. |
 
 ---
 
