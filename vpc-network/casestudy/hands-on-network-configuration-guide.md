@@ -401,6 +401,81 @@ gcloud compute forwarding-rules create psc-storage-rule \
 
 ---
 
+## Scenario 7: VPC-Native Private GKE Clusters with Alias IP Ranges
+
+In this scenario, you provision a **VPC-Native Private Google Kubernetes Engine (GKE) Cluster** (`gke-prod-cluster`) attached to `prod-vpc` and `prod-subnet-us`. Every Kubernetes Pod receives a real IPv4 address dynamically from the VPC subnet secondary IPv4 alias ranges!
+
+```mermaid
+graph TD
+    classDef vpc fill:#0F172A,stroke:#38BDF8,stroke-width:2px,color:#F8FAFC;
+    classDef gke fill:#1E1B4B,stroke:#C084FC,stroke-width:2px,color:#F8FAFC;
+    classDef pod fill:#064E3B,stroke:#34D399,stroke-width:2px,color:#F8FAFC;
+
+    subgraph CustomVPC ["CUSTOM VPC NETWORK: prod-vpc"]
+        subgraph SubnetUS ["Subnet: prod-subnet-us (Primary: 10.200.1.0/24)"]
+            Node1["GKE Node 1: gke-node-a1<br/>Internal Node IP: 10.200.1.10"]:::gke
+            Node2["GKE Node 2: gke-node-a2<br/>Internal Node IP: 10.200.1.11"]:::gke
+        end
+        
+        subgraph PodRange ["Pod Secondary Alias CIDR: 10.100.0.0/16"]
+            Pod1["Web App Pod 1<br/>VPC Alias IP: 10.100.1.15"]:::pod
+            Pod2["Web App Pod 2<br/>VPC Alias IP: 10.100.2.20"]:::pod
+        end
+
+        subgraph ServiceRange ["Service Secondary Alias CIDR: 10.101.0.0/20"]
+            Svc["K8s ClusterIP Service<br/>VPC Alias IP: 10.101.0.50"]:::pod
+        end
+    end
+
+    Node1 <--> Pod1
+    Node2 <--> Pod2
+    Pod1 <-->|Native Intra-VPC Routing| Pod2
+```
+
+### Step 7.1: Create Subnet Secondary Ranges for GKE Pods and Services
+```bash
+# Add secondary IPv4 alias ranges to prod-subnet-us
+gcloud compute networks subnets update prod-subnet-us \
+    --region=us-central1 \
+    --add-secondary-ranges=gke-pods-range=10.100.0.0/16,gke-services-range=10.101.0.0/20
+```
+
+### Step 7.2: Launch VPC-Native Private GKE Cluster
+```bash
+gcloud container clusters create gke-prod-cluster \
+    --region=us-central1 \
+    --network=prod-vpc \
+    --subnetwork=prod-subnet-us \
+    --cluster-secondary-range-name=gke-pods-range \
+    --services-secondary-range-name=gke-services-range \
+    --enable-ip-alias \
+    --enable-private-nodes \
+    --master-ipv4-cidr=172.16.0.0/28 \
+    --enable-master-authorized-networks \
+    --master-authorized-networks=10.200.1.0/24 \
+    --enable-network-policy
+```
+
+### Step 7.3: Authenticate `kubectl` & Verify Pod Alias IPs
+```bash
+# Get cluster credentials
+gcloud container clusters get-credentials gke-prod-cluster --region=us-central1
+
+# Deploy web deployment
+kubectl create deployment web-app --image=nginx:alpine --replicas=2
+
+# Verify Pod IP addresses belong to VPC Secondary Range (10.100.x.x)
+kubectl get pods -o wide
+```
+*Expected Terminal Output:*
+```text
+NAME                       READY   STATUS    RESTARTS   AGE   IP            NODE
+web-app-74b89-x8q2z        1/1     Running   0          45s   10.100.1.15   gke-gke-prod-cluster-node-a1
+web-app-74b89-m4k91        1/1     Running   0          45s   10.100.2.20   gke-gke-prod-cluster-node-a2
+```
+
+---
+
 ## Related Workspace Documents
 
 - [Case Study Index](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/README.md)
@@ -409,3 +484,5 @@ gcloud compute forwarding-rules create psc-storage-rule \
 - [Stateful Firewall Deep Dive](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/firewall-deep-dive.md)
 - [Compute & Network Integration](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/compute-network-integration.md)
 - [Commands & Diagnostics Manual](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/commands-and-troubleshooting.md)
+- [Kubernetes Shell Commands Manual](file:///home/btpl-lap-22/live/gcd/kubernetes/shell-commands.md)
+
