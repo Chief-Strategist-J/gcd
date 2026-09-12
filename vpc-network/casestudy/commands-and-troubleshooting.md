@@ -194,6 +194,33 @@ gcloud compute routers nats create nat-gw-us \
 
 ---
 
+#### Command: Enable & Query Cloud NAT Connection & Error Logging
+```bash
+# 1. Enable Cloud NAT Logging for Translations and Errors on existing NAT Gateway
+gcloud compute routers nats update nat-config \
+    --router=nat-router \
+    --region=us-central1 \
+    --enable-logging \
+    --log-config-filter=ALL
+
+# 2. View NAT Gateway logs using gcloud logging CLI
+gcloud logging read \
+    'resource.type="nat_gateway" AND resource.labels.gateway_name="nat-config"' \
+    --limit=10 \
+    --format="json"
+```
+
+##### Parameter Breakdown & Cloud Logging Filter Rationale:
+
+| Parameter / Flag | Definition & Purpose | Rationale & Operational Value |
+| :--- | :--- | :--- |
+| `--enable-logging` | **Enable NAT Event Logging**: Captures connection creation and port exhaustion events. | Generates audit logs whenever a VM opens an outbound NAT session or drops packets due to port exhaustion. |
+| `--log-config-filter=ALL` | **Log Filter Scope**: `ALL`, `ERRORS_ONLY`, or `TRANSLATIONS_ONLY`. | `ALL` records both successful outbound NAT port translations and failed connection attempts (port exhaustion). |
+| `resource.type="nat_gateway"` | **Cloud Logging Resource Type**: Targets Cloud NAT telemetry. | Filters Cloud Logging stream to show only Cloud NAT translation logs. |
+
+
+---
+
 #### Command: Configure VPC Network Peering (Private Cross-VPC Routing)
 ```bash
 gcloud compute networks peerings create peer-mynet-to-mgmt \

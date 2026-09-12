@@ -14,6 +14,9 @@ This practical hands-on guide provides step-by-step blueprints, exact copy-paste
 | [**Scenario 4**](#scenario-4-vpc-network-peering-between-two-custom-networks) | **VPC Peering** | 2 Custom VPCs (`vpc-a`, `vpc-b`), Internal VMs | Establish bi-directional VPC Peering between two isolated VPCs to enable private cross-VPC ping. |
 | [**Scenario 5**](#scenario-5-multi-nic-dual-homed-appliance-configuration) | **Multi-NIC VPC** | Dual-Homed Firewall VM (`nic0`, `nic1`) | Provision a VM instance with multiple vNIC interfaces attached to two separate VPC networks. |
 | [**Scenario 6**](#scenario-6-private-service-connect-psc-for-google-apis) | **Private Service Connect** | Private VMs, Google Cloud APIs | Access Google Cloud Storage (`storage.googleapis.com`) privately from a VM via an internal PSC IP endpoint. |
+| [**Scenario 7**](#scenario-7-vpc-native-private-gke-clusters-with-alias-ip-ranges) | **VPC-Native GKE** | Private GKE Cluster, Secondary Alias CIDRs | Deploy a private VPC-native GKE cluster with pod and service IP alias ranges on custom subnets. |
+| [**Scenario 8**](#scenario-8-hands-on-blueprint--private-google-access-cloud-nat--connection-logging) | **Private Google Access & NAT** | Private VM (`--no-address`), PGA, Cloud NAT, Logging | Reproduce exact lab workflow: IAP tunnel (`35.235.240.0/20`), GCS bucket via PGA, Cloud NAT `apt-get update`, and Cloud NAT Logging. |
+
 
 ---
 
@@ -527,7 +530,142 @@ spec:
 
 ---
 
-## Scenario 8: Connectivity Scope Isolation Summary Matrix
+## Scenario 8: Hands-On Blueprint — Private Google Access, Cloud NAT & Connection Logging
+
+This scenario reproduces the exact lab workflow for configuring isolated private instances (`vm-internal`), securing SSH via IAP tunneling (`35.235.240.0/20`), validating Private Google Access (PGA) bucket transfers, deploying Cloud NAT for OS updates (`apt-get update`), and capturing NAT connection logs in Cloud Logging.
+
+```mermaid
+graph TD
+    classDef iap fill:#1E293B,stroke:#38BDF8,stroke-width:2px,color:#F8FAFC;
+    classDef nat fill:#451A03,stroke:#F97316,stroke-width:2px,color:#F8FAFC;
+    classDef gcs fill:#064E3B,stroke:#34D399,stroke-width:2px,color:#F8FAFC;
+    classDef vm fill:#1E1B4B,stroke:#C084FC,stroke-width:2px,color:#F8FAFC;
+
+    subgraph VPC ["CUSTOM VPC NETWORK: privatenet"]
+        subgraph Subnet ["Subnet: privatenet-us (10.130.0.0/20) [PGA ENABLED]"]
+            VM["Private VM: vm-internal<br/>Internal IP: 10.130.0.2<br/>External IP: NONE"]:::vm
+        end
+        FW_IAP["Firewall Rule: privatenet-allow-ssh<br/>Source: 35.235.240.0/20 | ALLOW tcp:22"]:::iap
+        Router["Cloud Router: nat-router"]:::nat
+        NAT["Cloud NAT: nat-config<br/>[Logging: ALL TRANSLATIONS & ERRORS]"]:::nat
+    end
+
+    CloudShell["Cloud Shell / IAP Proxy Client"]:::iap
+    GCS["Cloud Storage Bucket<br/>(gs://$MY_BUCKET/*.svg)"]:::gcs
+    DebianRepo["Debian Apt Package Mirrors<br/>(deb.debian.org)"]:::nat
+    Logging["Cloud Logging Explorer<br/>(resource.type=nat_gateway)"]:::nat
+
+    CloudShell -->|1. SSH via IAP Tunneling| FW_IAP
+    FW_IAP --> VM
+    VM -->|2. Private Google Access (PGA)<br/>Internal Backbone Path| GCS
+    VM -->|3. Outbound Egress SNAT| NAT
+    NAT -->|4. Software Updates| DebianRepo
+    NAT -.->|5. NAT Connection & Error Telemetry| Logging
+```
+
+### Step 8.1: Create Custom Network, Subnet & IAP Ingress Firewall Rule
+```bash
+# 1. Create Custom VPC Network
+gcloud compute networks create privatenet --subnet-mode=custom
+
+# 2. Create Subnet (PGA Disabled Initially to test isolation)
+gcloud compute networks subnets create privatenet-us \
+    --network=privatenet \
+    --region=us-central1 \
+    --range=10.130.0.0/20
+
+# 3. Create Firewall Rule for IAP Tunneling SSH Access (35.235.240.0/20)
+gcloud compute firewall-rules create privatenet-allow-ssh \
+    --network=privatenet \
+    --allow=tcp:22 \
+    --source-ranges=35.235.240.0/20
+```
+
+### Step 8.2: Create Private VM Instance & Test Connection
+```bash
+# Create Instance with NO External IP address
+gcloud compute instances create vm-internal \
+    --zone=us-central1-c \
+    --machine-type=e2-standard-2 \
+    --subnet=privatenet-us \
+    --no-address
+
+# Connect to vm-internal using IAP TCP Forwarding Tunnel
+gcloud compute ssh vm-internal --zone=us-central1-c --tunnel-through-iap
+
+# Inside vm-internal: Test external IP connectivity (Fails as expected)
+ping -c 2 www.google.com
+# Expected Result: 100% packet loss (No external IP / NAT)
+exit
+```
+
+### Step 8.3: Enable Private Google Access (PGA) & Test Cloud Storage Access
+```bash
+# Create a test Cloud Storage bucket from Cloud Shell
+export MY_BUCKET="privatenet-test-bucket-$RANDOM"
+gcloud storage buckets create gs://$MY_BUCKET --location=US
+
+# Copy sample asset into bucket
+gcloud storage cp gs://cloud-training/gcpnet/private/access.svg gs://$MY_BUCKET/
+
+# SSH into vm-internal and attempt bucket copy BEFORE enabling PGA (FAILS)
+gcloud compute ssh vm-internal --zone=us-central1-c --tunnel-through-iap --command="gcloud storage cp gs://$MY_BUCKET/*.svg ."
+# Result: TIMEOUT / HANGS (PGA is OFF and VM has no public IP)
+
+# Enable Private Google Access on Subnet
+gcloud compute networks subnets update privatenet-us \
+    --region=us-central1 \
+    --enable-private-ip-google-access
+
+# Retry bucket copy AFTER enabling PGA (SUCCEEDS!)
+gcloud compute ssh vm-internal --zone=us-central1-c --tunnel-through-iap --command="gcloud storage cp gs://$MY_BUCKET/*.svg ."
+# Result: Copy complete!
+```
+
+### Step 8.4: Configure Cloud NAT & Verify Software Updates (`apt-get update`)
+```bash
+# SSH into vm-internal and test apt update BEFORE NAT (FAILS for non-Google repos)
+gcloud compute ssh vm-internal --zone=us-central1-c --tunnel-through-iap --command="sudo apt-get update"
+# Result: Hangs / Fails connecting to deb.debian.org
+
+# 1. Create Cloud Router
+gcloud compute routers create nat-router \
+    --network=privatenet \
+    --region=us-central1
+
+# 2. Create Cloud NAT Gateway
+gcloud compute routers nats create nat-config \
+    --router=nat-router \
+    --region=us-central1 \
+    --auto-allocate-nat-external-ips \
+    --nat-all-subnet-ip-ranges
+
+# Test apt update AFTER NAT (SUCCEEDS!)
+gcloud compute ssh vm-internal --zone=us-central1-c --tunnel-through-iap --command="sudo apt-get update"
+# Result: Reading package lists... Done!
+```
+
+### Step 8.5: Enable Cloud NAT Connection Logging & Query Telemetry
+```bash
+# Enable Logging for Translations and Errors on NAT Gateway
+gcloud compute routers nats update nat-config \
+    --router=nat-router \
+    --region=us-central1 \
+    --enable-logging \
+    --log-config-filter=ALL
+
+# Generate outbound NAT traffic from vm-internal
+gcloud compute ssh vm-internal --zone=us-central1-c --tunnel-through-iap --command="sudo apt-get update"
+
+# Read NAT logs from Cloud Logging CLI
+gcloud logging read 'resource.type="nat_gateway" AND resource.labels.gateway_name="nat-config"' \
+    --limit=5 \
+    --format="json(timestamp, jsonPayload.connection, jsonPayload.allocation_status)"
+```
+
+---
+
+## Scenario 9: Connectivity Scope Isolation Summary Matrix
 
 For quick reference during operational deployment and troubleshooting, the table below contrasts connectivity behaviors inside the **Same Network** vs. **Other Networks** across Zonal, Regional, Cross-VPC, and External boundaries:
 
@@ -557,5 +695,6 @@ For quick reference during operational deployment and troubleshooting, the table
 - [Compute & Network Integration](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/compute-network-integration.md)
 - [Commands & Diagnostics Manual](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/commands-and-troubleshooting.md)
 - [Kubernetes Shell Commands Manual](file:///home/btpl-lap-22/live/gcd/kubernetes/shell-commands.md)
+
 
 
