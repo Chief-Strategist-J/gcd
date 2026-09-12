@@ -314,6 +314,61 @@ kubectl diff -f ./deployment.yaml
 
 ---
 
+### 3. Imperative Kubernetes YAML Specification Generators (--dry-run=client -o yaml)
+
+Instead of writing YAML manifests by hand, `kubectl` imperative generators create complete, valid resource specifications instantly without applying them to the cluster.
+
+```bash
+# 1. Generate Deployment Manifest with Replicas, Port, and Image
+kubectl create deployment web-api \
+    --image=us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0 \
+    --replicas=3 \
+    --port=8080 \
+    --dry-run=client -o yaml > deployment.yaml
+
+# 2. Generate ClusterIP Service Exposing Deployment
+kubectl expose deployment web-api \
+    --name=web-api-svc \
+    --port=80 \
+    --target-port=8080 \
+    --type=ClusterIP \
+    --dry-run=client -o yaml > service.yaml
+
+# 3. Generate ConfigMap from Literals
+kubectl create configmap app-config \
+    --from-literal=DB_HOST=10.1.0.25 \
+    --from-literal=DB_PORT=5432 \
+    --dry-run=client -o yaml > configmap.yaml
+
+# 4. Generate Secret from Literals
+kubectl create secret generic db-secret \
+    --from-literal=username=admin \
+    --from-literal=password=SuperSecretPass123! \
+    --dry-run=client -o yaml > secret.yaml
+
+# 5. Generate Ingress Routing Specification
+kubectl create ingress web-ingress \
+    --rule="app.example.com/*=web-api-svc:80" \
+    --dry-run=client -o yaml > ingress.yaml
+```
+
+#### Expected Terminal Output:
+```text
+apiVersions, metadata, and spec definitions emitted cleanly to YAML files.
+```
+
+#### How to Verify Generated Specs:
+```bash
+kubectl apply -f ./deployment.yaml --dry-run=server
+```
+
+#### Expected Verification Output:
+```text
+deployment.apps/web-api created (server dry run)
+```
+
+---
+
 ## Category 6: Advanced Output Formatting & JSONPath Queries
 
 ### 1. Extract & Decrypt Secret Password in One Command
