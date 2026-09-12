@@ -86,6 +86,109 @@ Total: 0 (HIGH: 0, CRITICAL: 0)
 
 ---
 
+### 3. Production Docker Container Instance Generator (`docker run`)
+
+Generates and runs an isolated container instance with explicit port mapping, environment variables, restart policies, and named volume mounts.
+
+```bash
+docker run -d \
+    --name web-app-container \
+    -p 8080:8080 \
+    --env DB_HOST=10.1.0.25 \
+    --env DB_PORT=5432 \
+    --restart=unless-stopped \
+    --memory=512m \
+    --cpus=1.0 \
+    us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0
+```
+
+#### Expected Terminal Output:
+```text
+e9182390f7192837198237192837192837192837192837192837192837192837
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+docker ps --filter "name=web-app-container" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+```
+
+#### Expected Verification Output:
+```text
+NAMES               STATUS          PORTS
+web-app-container   Up 10 seconds   0.0.0.0:8080->8080/tcp
+```
+
+---
+
+### 4. GCP Artifact Registry Authentication & Container Push Generator (`docker push`)
+
+Authenticates local Docker CLI against Google Cloud Artifact Registry and pushes image artifacts.
+
+```bash
+# Step 1: Configure Docker credential helper for GCP Artifact Registry
+gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+# Step 2: Push container image to GCP Artifact Registry
+docker push us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0
+```
+
+#### Expected Terminal Output:
+```text
+The push refers to repository [us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app]
+5f70bf18a086: Pushed
+c4f82d19b7a0: Pushed
+v2.4.0: digest: sha256:a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef0 size: 739
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+gcloud artifacts docker images list us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo
+```
+
+#### Expected Verification Output:
+```text
+IMAGE                                                      DIGEST                                    TAGS
+us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app  sha256:a1b2c3d4e5f6789012345...          v2.4.0
+```
+
+---
+
+### 5. Multi-Architecture Container Build & Registry Push Generator (`docker buildx`)
+
+Generates cross-platform container builds (`linux/amd64` and `linux/arm64`) using BuildKit and pushes them directly to Artifact Registry.
+
+```bash
+docker buildx build \
+    --platform linux/amd64,linux/arm64 \
+    --build-arg APP_VERSION=2.4.0 \
+    -t us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0 \
+    --push \
+    -f ./Dockerfile .
+```
+
+#### Expected Terminal Output:
+```text
+[+] Building 22.4s (20/20) FINISHED
+ => => pushing layers
+ => => pushing manifest for us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0
+```
+
+#### How to Verify Multi-Arch Manifest:
+```bash
+docker buildx imagetools inspect us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0
+```
+
+#### Expected Verification Output:
+```text
+Name:      us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0
+MediaType: application/vnd.docker.distribution.manifest.list.v2+json
+Manifests:
+  Platform: linux/amd64
+  Platform: linux/arm64
+```
+
+---
+
 ## Category 2: Image & Container Resource Memory Monitoring
 
 ### 1. Monitor Pod Memory & CPU Usage (`kubectl top`)
