@@ -50,40 +50,40 @@ gcd/
 
 ## Feature Index Links
 
-### 🔑 Feature 1: GCP Core Config & Project Management (`/gcp-config-project/`)
-* 📐 **[HLD & LLD Design (`gcp-config-project/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/gcp-config-project/hld-lld-design.md)**
-* 🌳 **[ASCII & Visual Decision Trees (`gcp-config-project/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/gcp-config-project/decision-tree.md)**
-* 💻 **[Shell Command Reference & Verification Manual (`gcp-config-project/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/gcp-config-project/shell-commands.md)**
-* 🔗 **[Official References & Links (`gcp-config-project/references.md`)](file:///home/btpl-lap-22/live/gcd/gcp-config-project/references.md)**
+### Feature 1: GCP Core Config & Project Management (`/gcp-config-project/`)
+* **[HLD & LLD Design (`gcp-config-project/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/gcp-config-project/hld-lld-design.md)**
+* **[ASCII & Visual Decision Trees (`gcp-config-project/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/gcp-config-project/decision-tree.md)**
+* **[Shell Command Reference & Verification Manual (`gcp-config-project/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/gcp-config-project/shell-commands.md)**
+* **[Official References & Links (`gcp-config-project/references.md`)](file:///home/btpl-lap-22/live/gcd/gcp-config-project/references.md)**
 
 ---
 
-### 🖥️ Feature 2: Compute Engine (`/compute-engine/`)
-* 📐 **[HLD & LLD Design (`compute-engine/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/hld-lld-design.md)**
-* 🌳 **[ASCII & Visual Decision Trees (`compute-engine/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/decision-tree.md)**
-* 💻 **[Shell Command Reference & Failure Resolutions (`compute-engine/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/shell-commands.md)**
-* 🔗 **[Official References & Links (`compute-engine/references.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/references.md)**
+### Feature 2: Compute Engine (`/compute-engine/`)
+* **[HLD & LLD Design (`compute-engine/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/hld-lld-design.md)**
+* **[ASCII & Visual Decision Trees (`compute-engine/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/decision-tree.md)**
+* **[Shell Command Reference & Failure Resolutions (`compute-engine/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/shell-commands.md)**
+* **[Official References & Links (`compute-engine/references.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/references.md)**
 
 ---
 
-### 🪣 Feature 3: Cloud Storage (`/cloud-storage/`)
-* 📐 **[HLD & LLD Design (`cloud-storage/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/cloud-storage/hld-lld-design.md)**
-* 🌳 **[ASCII & Visual Decision Trees (`cloud-storage/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/cloud-storage/decision-tree.md)**
-* 💻 **[Shell Command Reference & Failure Resolutions (`cloud-storage/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/cloud-storage/shell-commands.md)**
-* 🔗 **[Official References & Links (`cloud-storage/references.md`)](file:///home/btpl-lap-22/live/gcd/cloud-storage/references.md)**
+### Feature 3: Cloud Storage (`/cloud-storage/`)
+* **[HLD & LLD Design (`cloud-storage/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/cloud-storage/hld-lld-design.md)**
+* **[ASCII & Visual Decision Trees (`cloud-storage/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/cloud-storage/decision-tree.md)**
+* **[Shell Command Reference & Failure Resolutions (`cloud-storage/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/cloud-storage/shell-commands.md)**
+* **[Official References & Links (`cloud-storage/references.md`)](file:///home/btpl-lap-22/live/gcd/cloud-storage/references.md)**
 
 ---
 
-### ☸️ Feature 4: Kubernetes & kubectl (`/kubernetes/`)
-* 📐 **[HLD & LLD Design (`kubernetes/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/kubernetes/hld-lld-design.md)**
-* 🌳 **[ASCII & Visual Decision Trees (`kubernetes/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/kubernetes/decision-tree.md)**
-* 💻 **[Shell Command Reference & Failure Resolutions (`kubernetes/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/kubernetes/shell-commands.md)**
-* 🔗 **[Official References & Links (`kubernetes/references.md`)](file:///home/btpl-lap-22/live/gcd/kubernetes/references.md)**
+### Feature 4: Kubernetes & kubectl (`/kubernetes/`)
+* **[HLD & LLD Design (`kubernetes/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/kubernetes/hld-lld-design.md)**
+* **[ASCII & Visual Decision Trees (`kubernetes/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/kubernetes/decision-tree.md)**
+* **[Shell Command Reference & Failure Resolutions (`kubernetes/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/kubernetes/shell-commands.md)**
+* **[Official References & Links (`kubernetes/references.md`)](file:///home/btpl-lap-22/live/gcd/kubernetes/references.md)**
 
 ---
 
-### 📊 Feature 5: BigQuery (`/bigquery/`)
-* 📐 **[HLD & LLD Design (`bigquery/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/bigquery/hld-lld-design.md)**
-* 🌳 **[ASCII & Visual Decision Trees (`bigquery/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/bigquery/decision-tree.md)**
-* 💻 **[Shell Command Reference & Failure Resolutions (`bigquery/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/bigquery/shell-commands.md)**
-* 🔗 **[Official References & Links (`bigquery/references.md`)](file:///home/btpl-lap-22/live/gcd/bigquery/references.md)**
+### Feature 5: BigQuery (`/bigquery/`)
+* **[HLD & LLD Design (`bigquery/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/bigquery/hld-lld-design.md)**
+* **[ASCII & Visual Decision Trees (`bigquery/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/bigquery/decision-tree.md)**
+* **[Shell Command Reference & Failure Resolutions (`bigquery/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/bigquery/shell-commands.md)**
+* **[Official References & Links (`bigquery/references.md`)](file:///home/btpl-lap-22/live/gcd/bigquery/references.md)**

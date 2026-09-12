@@ -4,7 +4,7 @@ This document provides official reference links, security guides, and API docume
 
 ---
 
-## 📚 Official Google Cloud Documentation
+## Official Google Cloud Documentation
 
 ### 1. Identity, Authentication & ADC
 * [Google Cloud Authentication Overview](https://cloud.google.com/docs/authentication)
