@@ -495,6 +495,46 @@ graph TD
 
 ---
 
+## 4. IAM Required Roles & Permissions Master Reference Matrix
+
+To provision network resources, deploy private instances, connect via IAP, and view telemetry logs without hitting `PERMISSION_DENIED` (403) errors, specific Google Cloud IAM roles and permissions must be granted.
+
+### 4.1 Required IAM Roles by Operational Task
+
+| Operational Role / Task | Minimum Required Predefined IAM Role | Underlying IAM Permissions Included | Impact if Missing (Error Message) |
+|---|---|---|---|
+| **Pipeline Executor** (Creating VPC, Subnets, Firewall Rules, Routers, Cloud NAT) | **Compute Network Admin** (`roles/compute.networkAdmin`) | `compute.networks.create`<br/>`compute.subnetworks.create`<br/>`compute.firewalls.create`<br/>`compute.routers.create` | `403 PERMISSION_DENIED: Required permission 'compute.networks.create' to create network` |
+| **Instance Creator** (Launching Compute Engine VM) | **Compute Instance Admin (v1)** (`roles/compute.instanceAdmin.v1`) | `compute.instances.create`<br/>`compute.instances.setMetadata`<br/>`compute.instances.setServiceAccount` | `403 PERMISSION_DENIED: Required permission 'compute.instances.create' to create instance` |
+| **Service Account Attacher** (`--service-account`) | **Service Account User** (`roles/iam.serviceAccountUser`) | `iam.serviceAccounts.actAs` | `403 PERMISSION_DENIED: User does not have permission 'iam.serviceAccounts.actAs' on service account` |
+| **IAP SSH User** (`gcloud compute ssh --tunnel-through-iap`) | **IAP-Secured Tunnel User** (`roles/iap.tunnelResourceAccessor`) | `iap.tunnelInstances.accessViaTunnel` | `403 Forbidden: You do not have permission to access the instance via IAP tunnel` |
+| **Linux OS Login User** | **Compute OS Admin Login** (`roles/compute.osAdminLogin`) or **Compute OS Login** (`roles/compute.osLogin`) | `compute.instances.osLogin` | `Permission denied (publickey)` or OS authentication failure inside IAP tunnel. |
+| **VM Cloud Storage Access** (`gcloud storage cp`) | **Storage Object Viewer** (`roles/storage.objectViewer`) or **Storage Admin** (`roles/storage.objectAdmin`) | `storage.objects.get`<br/>`storage.objects.list` | `403 AccessDeniedException: Anonymous caller does not have storage.objects.get access` |
+| **Cloud NAT Log Viewer** (`gcloud logging read`) | **Logs Viewer** (`roles/logging.viewer`) | `logging.logs.list`<br/>`logging.entries.list` | `403 PERMISSION_DENIED: Required permission 'logging.entries.list' to read logs` |
+
+> [!TIP]
+> Full network administration and instance deployment permissions can be granted to a pipeline runner or admin by assigning the **Compute Admin** (`roles/compute.admin`) and **IAP-Secured Tunnel User** (`roles/iap.tunnelResourceAccessor`) roles.
+
+### 4.2 Quick `gcloud` IAM Grant Commands for Team Access
+
+```bash
+# 1. Grant IAP SSH Tunneling Access to a User
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+    --member="user:developer@example.com" \
+    --role="roles/iap.tunnelResourceAccessor"
+
+# 2. Grant OS Login Access to a User
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+    --member="user:developer@example.com" \
+    --role="roles/compute.osAdminLogin"
+
+# 3. Grant Service Account User Role on a Target Service Account
+gcloud iam service-accounts add-iam-policy-binding app-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com \
+    --member="user:admin@example.com" \
+    --role="roles/iam.serviceAccountUser"
+```
+
+---
+
 ## Related Workspace Documents
 
 - [Case Study Index](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/README.md)
@@ -502,3 +542,4 @@ graph TD
 - [Low-Level Packet Lifecycle (LLD)](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/lld-packet-lifecycle.md)
 - [Stateful Firewall Deep Dive](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/firewall-deep-dive.md)
 - [Compute & Network Integration](file:///home/btpl-lap-22/live/gcd/vpc-network/casestudy/compute-network-integration.md)
+
