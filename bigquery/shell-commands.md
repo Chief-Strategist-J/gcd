@@ -1,6 +1,11 @@
-# BigQuery: In-Depth CLI Command Reference & Failure Resolution Manual
+# BigQuery: In-Depth Operations & Verification Manual
 
-This document is an exhaustive, production-validated reference manual for the BigQuery CLI tool (`bq`). Commands are categorized by operational domain and include explicit **Error Diagnosis & Failure Resolution Commands** for production data warehouse scenarios.
+This document is an operational reference manual for the BigQuery CLI tool (`bq`).
+
+Every section provides:
+1. **Command to Execute**
+2. **Expected Terminal Output (What to read & look for in terminal)**
+3. **How to Verify Configuration Correctness & Expected Verification Output**
 
 ---
 
@@ -16,7 +21,8 @@ This document is an exhaustive, production-validated reference manual for the Bi
 
 ## Category 1: Dataset & Partitioned/Clustered Table Management
 
-### 1. Create Dataset with Regional Location & Default Expiration
+### 1. Create Dataset with Regional Location & Expiration
+
 ```bash
 bq --location=US mk \
     --dataset \
@@ -25,7 +31,32 @@ bq --location=US mk \
     YOUR_PROJECT_ID:prod_analytics
 ```
 
-### 2. Create Partitioned & Clustered Table with Schema Definition
+#### Expected Terminal Output:
+```text
+Dataset 'YOUR_PROJECT_ID:prod_analytics' successfully created.
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+bq show --format=prettyjson YOUR_PROJECT_ID:prod_analytics
+```
+
+#### Expected Verification Output:
+```json
+{
+  "datasetReference": {
+    "datasetId": "prod_analytics",
+    "projectId": "YOUR_PROJECT_ID"
+  },
+  "defaultTableExpirationMs": "3600000",
+  "location": "US"
+}
+```
+
+---
+
+### 2. Create Partitioned & Clustered Table with Schema
+
 ```bash
 bq mk \
     --table \
@@ -36,16 +67,37 @@ bq mk \
     YOUR_PROJECT_ID:prod_analytics.user_transactions \
     id:STRING,user_id:STRING,region:STRING,amount:NUMERIC,transaction_date:DATE
 ```
-* **Parameters**:
-  * `--time_partitioning_field transaction_date`: Divides storage into daily partitions by date.
-  * `--clustering_fields region,user_id`: Sorts data blocks inside partitions by region and user_id.
-  * `--require_partition_filter=true`: Prevents accidental full-table scans by enforcing a `WHERE transaction_date = ...` clause.
+
+#### Expected Terminal Output:
+```text
+Table 'YOUR_PROJECT_ID:prod_analytics.user_transactions' successfully created.
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+bq show --format=prettyjson YOUR_PROJECT_ID:prod_analytics.user_transactions
+```
+
+#### Expected Verification Output:
+```json
+{
+  "clustering": {
+    "fields": ["region", "user_id"]
+  },
+  "requirePartitionFilter": true,
+  "timePartitioning": {
+    "field": "transaction_date",
+    "type": "DAY"
+  }
+}
+```
 
 ---
 
 ## Category 2: High-Performance Data Loading (`bq load` Parquet/JSON/CSV)
 
-### 1. Load Compressed Parquet Files from Cloud Storage ($0 Load Cost)
+### 1. Load Compressed Parquet Files from Cloud Storage
+
 ```bash
 bq load \
     --source_format=PARQUET \
@@ -54,45 +106,64 @@ bq load \
     "gs://my-prod-data-bucket/parquet/year=2026/*.parquet"
 ```
 
-### 2. Load Newline-Delimited JSON with Schema Auto-Detection & Max Bad Records
+#### Expected Terminal Output:
+```text
+Waiting on bqjob_r7a892b1_0000018f921... (3s) Current status: DONE
+```
+
+#### How to Verify Configuration Correctness:
 ```bash
-bq load \
-    --source_format=NEWLINE_DELIMITED_JSON \
-    --autodetect \
-    --max_bad_records=10 \
-    --ignore_unknown_values \
-    YOUR_PROJECT_ID:prod_analytics.raw_events \
-    "gs://my-prod-data-bucket/events/*.json"
+bq query --use_legacy_sql=false 'SELECT COUNT(*) AS total_rows FROM `prod_analytics.user_transactions` WHERE transaction_date = "2026-09-12"'
+```
+
+#### Expected Verification Output:
+```text
++------------+
+| total_rows |
++------------+
+|    1450201 |
++------------+
 ```
 
 ---
 
 ## Category 3: SQL Execution, Cost Estimation & Dry-Runs (`bq query`)
 
-### 1. Dry-Run Query to Estimate Cost (Bytes Scanned) Without Execution
+### 1. Dry-Run Query to Estimate Cost (Bytes Scanned)
+
 ```bash
 bq query \
     --use_legacy_sql=false \
     --dry_run \
     'SELECT region, SUM(amount) AS total FROM `prod_analytics.user_transactions` WHERE transaction_date = "2026-09-12" GROUP BY region'
 ```
-* **Output**: `Query successfully validated. It will process 4521098 bytes when run.`
 
-### 2. Execute Production Query Writing to Destination Table
+#### Expected Terminal Output:
+```text
+Query successfully validated. It will process 4521098 bytes when run.
+```
+
+#### How to Verify Configuration Correctness:
 ```bash
+# Execute query and write results to destination summary table
 bq query \
     --use_legacy_sql=false \
     --destination_table=prod_analytics.daily_regional_summary \
     --write_disposition=WRITE_TRUNCATE \
-    --allow_large_results \
     'SELECT region, SUM(amount) AS total FROM `prod_analytics.user_transactions` WHERE transaction_date = "2026-09-12" GROUP BY region'
+```
+
+#### Expected Verification Output:
+```text
+Waiting on bqjob_r21b8c_0000018f929... (2s) Current status: DONE
 ```
 
 ---
 
 ## Category 4: Data Export & Cloud Storage Extraction (`bq extract`)
 
-### 1. Export Large Table to Compressed GZIP CSV Shards in GCS
+### 1. Export Table to Compressed GZIP CSV Shards in GCS
+
 ```bash
 bq extract \
     --destination_format=CSV \
@@ -101,15 +172,43 @@ bq extract \
     "gs://my-prod-data-bucket/exports/summary-*.csv.gz"
 ```
 
+#### Expected Terminal Output:
+```text
+Waiting on bqjob_r81f9a_0000018f930... (4s) Current status: DONE
+```
+
+#### How to Verify Configuration Correctness:
+```bash
+gcloud storage ls "gs://my-prod-data-bucket/exports/summary-*.csv.gz"
+```
+
+#### Expected Verification Output:
+```text
+gs://my-prod-data-bucket/exports/summary-000000000000.csv.gz
+```
+
 ---
 
 ## Category 5: IAM Security, Dataset Access Controls & Encryption
 
-### 1. Grant Dataset Viewer Access to User/Service Account
+### 1. Inspect & Grant Dataset Access Policy
+
 ```bash
-bq show --format=prettyjson YOUR_PROJECT_ID:prod_analytics > dataset_acl.json
-# Edit JSON to append member role, then apply:
-bq update --source dataset_acl.json YOUR_PROJECT_ID:prod_analytics
+bq show --format=prettyjson YOUR_PROJECT_ID:prod_analytics | grep -A 10 "access"
+```
+
+#### Expected Verification Output:
+```json
+  "access": [
+    {
+      "role": "WRITER",
+      "userByEmail": "data-pipeline-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com"
+    },
+    {
+      "role": "OWNER",
+      "specialGroup": "projectOwners"
+    }
+  ]
 ```
 
 ---
@@ -125,4 +224,3 @@ bq update --source dataset_acl.json YOUR_PROJECT_ID:prod_analytics
 | **`Resources exceeded during query execution`** | Query exceeded memory or slot allocation during heavy join/shuffle | `bq query --dry_run ...` | Cluster table by join key, replace `COUNT(DISTINCT x)` with `APPROX_COUNT_DISTINCT(x)`, or reserve additional Dremel slots. |
 | **`400 Bad Request: Too many bad records`** | Ingested file contains schema malformations exceeding limit | `bq load ...` | Increase limit `--max_bad_records=100` or inspect file errors via `bq show -j JOB_ID`. |
 | **`409 Already Exists: Table PROJECT:DS.TABLE`** | Table creation command attempted on existing table name | `bq ls PROJECT:DS` | Use `--replace` flag in `bq load` or drop table before creation: `bq rm -f PROJECT:DS.TABLE`. |
-| **`Row size too large`** | Single row JSON/CSV record exceeds 100MB limit | `gsutil cat gs://BUCKET/file.json \| head -n 1` | Pre-process data file to split large string/array attributes before loading into BigQuery. |

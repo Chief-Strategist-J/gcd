@@ -1,6 +1,11 @@
-# Cloud Storage: In-Depth CLI Command Reference & Failure Resolution Manual
+# Cloud Storage: In-Depth Operations & Verification Manual
 
-This document is an exhaustive, production-validated reference manual for Google Cloud Storage (`gcloud storage` / `gsutil`). Commands are categorized by operational domain and include explicit **Error Diagnosis & Resolution Commands** for common failure modes.
+This document is an operational reference manual for Google Cloud Storage (`gcloud storage` / `gsutil`).
+
+Every command snippet includes:
+1. **Command to Execute**
+2. **Expected Terminal Output (What to read & look for in terminal)**
+3. **How to Verify Configuration Correctness & Expected Verification Output**
 
 ---
 
@@ -11,252 +16,221 @@ This document is an exhaustive, production-validated reference manual for Google
 4. [Category 4: Lifecycle Management, Retention & Object Lock](#category-4-lifecycle-management-retention--object-lock)
 5. [Category 5: IAM Access Control, Security & Signed URLs](#category-5-iam-access-control-security--signed-urls)
 6. [Category 6: CORS Configuration & CMEK Encryption](#category-6-cors-configuration--cmek-encryption)
-7. [Category 7: Error Diagnosis & Failure Resolution Matrix (Expanded)](#category-7-error-diagnosis--failure-resolution-matrix-expanded)
+7. [Category 7: Error Diagnosis & Failure Resolution Matrix](#category-7-error-diagnosis--failure-resolution-matrix)
 
 ---
 
 ## Category 1: Bucket Provisioning & Baseline Security
 
-### Primary Command: Create Production Storage Bucket
+### 1. Create Production Storage Bucket with Security Guardrails
+
 ```bash
-gcloud storage buckets create gs://my-prod-company-assets \
+gcloud storage buckets create gs://gcd-prod-company-assets \
     --location=US \
     --default-storage-class=STANDARD \
     --public-access-prevention \
     --uniform-bucket-level-access
 ```
 
-#### Detailed Flag Breakdown:
-* `gs://my-prod-company-assets`: Globally unique bucket identifier. Must be lowercase, 3–63 characters, start/end with a letter or number.
-* `--location=US`: Multi-region US deployment providing geo-redundant durability across data centers.
-* `--default-storage-class=STANDARD`: Standard storage class (no retrieval fee, high availability).
-* `--public-access-prevention`: Enforces an organization-wide restriction blocking public ACL assignment.
-* `--uniform-bucket-level-access`: Disables legacy per-object ACLs, enforcing centralized Cloud IAM governance.
-
----
-
-### Common Failure Modes & Resolution Commands
-
-#### Failure Mode 1.1: `409 BucketAlreadyExists` / `BucketAlreadyOwnedByYou`
-* **Symptom**: `StorageException: 409 The requested bucket name is already in use by another project.`
-* **Root Cause**: GCS bucket names share a single global namespace across all GCP projects worldwide.
-* **Resolution Command**: Verify bucket availability before creation using `describe`:
-```bash
-# Check if bucket exists globally
-gcloud storage buckets describe gs://my-prod-company-assets 2>&1 || echo "Bucket is available"
-
-# Fix: Create bucket with unique project-prefix or random suffix
-gcloud storage buckets create gs://gcd-prod-assets-2026-us --location=US
+#### Expected Terminal Output:
+```text
+Creating gs://gcd-prod-company-assets/...
 ```
 
-#### Failure Mode 1.2: `403 AccessDenied` (Bucket Creation Forbidden)
-* **Symptom**: `AccessDeniedException: 403 Caller does not have storage.buckets.create permission.`
-* **Root Cause**: Principal lacks `roles/storage.admin` or `roles/storage.bucketAdmin` IAM permissions on target project.
-* **Resolution Command**: Grant `storage.admin` role to current active gcloud identity:
+#### How to Verify Configuration Correctness:
 ```bash
-# 1. Identify active authenticated account
-gcloud config get-value account
+gcloud storage buckets describe gs://gcd-prod-company-assets --format="yaml(name, location, storageClass, iamConfiguration)"
+```
 
-# 2. Grant Bucket Admin permission (requires Project Admin privileges)
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-    --member="user:$(gcloud config get-value account)" \
-    --role="roles/storage.admin"
+#### Expected Verification Output:
+```yaml
+iamConfiguration:
+  publicAccessPrevention: enforced
+  uniformBucketLevelAccess:
+    enabled: true
+location: US
+name: gcd-prod-company-assets
+storageClass: STANDARD
 ```
 
 ---
 
 ## Category 2: Object Operations (Upload, Download, Metadata)
 
-### Primary Commands: Standard Object Upload & Inspection
+### 1. Upload Object with Metadata Headers & CRC32c Checksum
 
 ```bash
-# 1. Upload file with custom Content-Type and Cache-Control headers
-gcloud storage cp ./application-v2.tar.gz gs://my-prod-company-assets/releases/v2.tar.gz \
+gcloud storage cp ./application-v2.tar.gz gs://gcd-prod-company-assets/releases/v2.tar.gz \
     --content-type="application/gzip" \
-    --cache-control="public, max-age=3600"
-
-# 2. Download object from bucket
-gcloud storage cp gs://my-prod-company-assets/releases/v2.tar.gz ./v2.tar.gz
-
-# 3. Inspect detailed object metadata (Size, Content-Type, MD5, ETag, Storage Class)
-gcloud storage objects describe gs://my-prod-company-assets/releases/v2.tar.gz
+    --cache-control="public, max-age=3600" \
+    --checksums=crc32c
 ```
 
----
-
-### Common Failure Modes & Resolution Commands
-
-#### Failure Mode 2.1: MD5 / CRC32c Checksum Mismatch (Corrupted Upload)
-* **Symptom**: `ServiceException: 400 Bad Request: Checksum mismatch. Downloaded bytes failed validation.`
-* **Root Cause**: Data stream corrupted during transit over unreliable network interfaces.
-* **Resolution Command**: Enforce client-side integrity validation during upload/download:
-```bash
-# Force CRC32c checksum validation during transfer
-gcloud storage cp ./large-data.bin gs://my-prod-company-assets/data.bin --checksums=crc32c
+#### Expected Terminal Output:
+```text
+Copying file://./application-v2.tar.gz to gs://gcd-prod-company-assets/releases/v2.tar.gz
+  Completed files 1/1 | 24.2MiB/24.2MiB                                         
 ```
 
-#### Failure Mode 2.2: `404 Not Found` Object Access Error
-* **Symptom**: `CommandException: No URLs matched gs://my-prod-company-assets/non-existent.file`
-* **Resolution Command**: Search bucket objects using wildcards and recursive listing:
+#### How to Verify Configuration Correctness:
 ```bash
-# List all files matching pattern recursively
-gcloud storage ls --recursive "gs://my-prod-company-assets/**/v2.tar.gz"
+gcloud storage objects describe gs://gcd-prod-company-assets/releases/v2.tar.gz \
+    --format="yaml(name, contentType, cacheControl, md5Hash, crc32c)"
+```
+
+#### Expected Verification Output:
+```yaml
+cacheControl: public, max-age=3600
+contentType: application/gzip
+crc32c: 7a8B9w==
+md5Hash: e281a94f872e128a1728e219ba489a2e
+name: releases/v2.tar.gz
 ```
 
 ---
 
 ## Category 3: High-Performance Data Transfer & Directory Sync
 
-### Primary Command: Parallel Directory Synchronization (`rsync`)
+### 1. Parallel Directory Synchronization (`rsync`)
+
 ```bash
-gcloud storage rsync -r ./media gs://my-prod-company-assets/media/ \
+gcloud storage rsync -r ./media gs://gcd-prod-company-assets/media/ \
     --delete-unmatched-destination-objects \
     --parallel-composite-upload-component-threshold=50MiB
 ```
 
-#### Detailed Flag Breakdown:
-* `-r` / `--recursive`: Recursively syncs nested subdirectories.
-* `--delete-unmatched-destination-objects`: Deletes files in bucket that no longer exist locally (mirror sync).
-* `--parallel-composite-upload-component-threshold`: Automatically splits large files (>50MiB) into parallel chunks for faster multi-threaded upload.
+#### Expected Terminal Output:
+```text
+Building synchronization state...
+At gs://gcd-prod-company-assets/media/, copying 14 files, deleting 1 file.
+Completed 14/14 operations.
+```
 
----
-
-### Common Failure Modes & Resolution Commands
-
-#### Failure Mode 3.1: Resumable Upload Timeout / Stalled Transfer
-* **Symptom**: Upload hangs on large multi-gigabyte files due to transient HTTP drops.
-* **Resolution Command**: Enable parallel composite uploads and tune chunk size:
+#### How to Verify Configuration Correctness:
 ```bash
-# Re-run rsync with parallel processing enabled
-gcloud config set storage/parallel_composite_upload_enabled True
-gcloud storage rsync -r ./media gs://my-prod-company-assets/media/
+gcloud storage ls --long "gs://gcd-prod-company-assets/media/"
+```
+
+#### Expected Verification Output:
+```text
+  1048576  2026-09-12T13:45:12Z  gs://gcd-prod-company-assets/media/hero.png
+   524288  2026-09-12T13:45:12Z  gs://gcd-prod-company-assets/media/banner.jpg
+TOTAL: 14 objects, 15728640 bytes (15.0 MiB)
 ```
 
 ---
 
 ## Category 4: Lifecycle Management, Retention & Object Lock
 
-### Primary Command: Applying Lifecycle Auto-Tiering Rules
+### 1. Set Bucket Lifecycle Policy (Auto-Delete after 30 days)
 
-#### 1. Lifecycle Policy JSON Configuration (`lifecycle.json`):
-```json
+```bash
+# Create JSON lifecycle rule configuration
+cat << 'EOF' > lifecycle.json
 {
   "rule": [
     {
-      "action": { "type": "SetStorageClass", "storageClass": "NEARLINE" },
-      "condition": { "age": 30 }
-    },
-    {
-      "action": { "type": "SetStorageClass", "storageClass": "COLDLINE" },
-      "condition": { "age": 90 }
-    },
-    {
-      "action": { "type": "Delete" },
-      "condition": { "age": 365 }
+      "action": {"type": "Delete"},
+      "condition": {"age": 30}
     }
   ]
 }
+EOF
+
+# Apply lifecycle policy to bucket
+gcloud storage buckets update gs://gcd-prod-company-assets --lifecycle-file=lifecycle.json
 ```
 
-#### 2. Apply Lifecycle Policy to Bucket:
-```bash
-gcloud storage buckets update gs://my-prod-company-assets --lifecycle-file=./lifecycle.json
+#### Expected Terminal Output:
+```text
+Updating gs://gcd-prod-company-assets/...
 ```
 
----
-
-### Common Failure Modes & Resolution Commands
-
-#### Failure Mode 4.1: `403 RetentionPolicyLocked` / Cannot Overwrite Locked Object
-* **Symptom**: `StorageException: 403 Retention policy is locked. Object cannot be deleted or overwritten until retention period expires.`
-* **Root Cause**: Bucket has a WORM (Write Once Read Many) Retention Policy locked under compliance enforcement.
-* **Resolution Command**: Inspect object retention expiration date and write to a new version URI:
+#### How to Verify Configuration Correctness:
 ```bash
-# Check object retention lock expiration
-gcloud storage objects describe gs://my-prod-company-assets/locked-file.pdf --format="value(retentionExpirationTime)"
+gcloud storage buckets describe gs://gcd-prod-company-assets --format="yaml(lifecycle)"
+```
+
+#### Expected Verification Output:
+```yaml
+lifecycle:
+  rule:
+  - action:
+      type: Delete
+    condition:
+      age: 30
 ```
 
 ---
 
 ## Category 5: IAM Access Control, Security & Signed URLs
 
-### Primary Commands: Role Assignment & Signed URL Generation
+### 1. Grant Storage Object Viewer Role & Generate Time-Limited Signed URL
 
 ```bash
-# 1. Grant IAM Storage Object Admin role to service account
-gcloud storage buckets add-iam-policy-binding gs://my-prod-company-assets \
-    --member="serviceAccount:app-runner@YOUR_PROJECT.iam.gserviceaccount.com" \
-    --role="roles/storage.objectAdmin"
+# Grant Object Viewer permission to user account
+gcloud storage buckets add-iam-policy-binding gs://gcd-prod-company-assets \
+    --member="user:analyst@company.com" \
+    --role="roles/storage.objectViewer"
 
-# 2. Generate a 1-Hour Presigned V4 Signed URL for Secure Temporary Download
-gcloud storage sign-url gs://my-prod-company-assets/releases/v2.tar.gz \
-    --duration=1h \
-    --private-key-file=./service-account-key.json
+# Generate 15-minute Signed URL for private file access
+gcloud storage sign-url gs://gcd-prod-company-assets/releases/v2.tar.gz \
+    --duration=15m
 ```
 
----
+#### Expected Terminal Output:
+```text
+Signed URL:
+https://storage.googleapis.com/gcd-prod-company-assets/releases/v2.tar.gz?GoogleAccessId=service-account@project.iam.gserviceaccount.com&Expires=178921827&Signature=a87f62s87f...
+```
 
-### Common Failure Modes & Resolution Commands
-
-#### Failure Mode 5.1: `403 Forbidden: Public Access Prevention Enforced`
-* **Symptom**: `AccessDeniedException: 403 Cannot make object public because Public Access Prevention is enforced on bucket.`
-* **Root Cause**: Organization security policy explicitly blocks public `allUsers` read permissions.
-* **Resolution Command**: Remove Public Access Prevention OR issue a secure Signed URL instead:
+#### How to Verify Configuration Correctness:
 ```bash
-# Option 1 (Recommended): Use Signed URL for authorized external sharing
-gcloud storage sign-url gs://my-prod-company-assets/file.pdf --duration=2h --private-key-file=key.json
+gcloud storage buckets get-iam-policy gs://gcd-prod-company-assets \
+    --filter="bindings.role:roles/storage.objectViewer"
+```
 
-# Option 2 (If public bucket is intended): Disable Public Access Prevention
-gcloud storage buckets update gs://my-prod-company-assets --clear-public-access-prevention
+#### Expected Verification Output:
+```yaml
+bindings:
+- members:
+  - user:analyst@company.com
+  role: roles/storage.objectViewer
 ```
 
 ---
 
 ## Category 6: CORS Configuration & CMEK Encryption
 
-### Primary Command: Configuring Customer-Managed Encryption Keys (CMEK)
+### 1. Apply Customer-Managed Encryption Key (CMEK) to Bucket
 
 ```bash
-# Set default Cloud KMS encryption key on bucket
-gcloud storage buckets update gs://my-prod-company-assets \
+gcloud storage buckets update gs://gcd-prod-company-assets \
     --default-kms-key=projects/YOUR_PROJECT/locations/us/keyRings/my-ring/cryptoKeys/my-key
 ```
 
----
+#### Expected Terminal Output:
+```text
+Updating gs://gcd-prod-company-assets/...
+```
 
-### Common Failure Modes & Resolution Commands
-
-#### Failure Mode 6.1: `403 PermissionDenied: KMS Key Service Account Access Missing`
-* **Symptom**: `AccessDeniedException: 403 Cloud KMS Service Account does not have permission to encrypt/decrypt.`
-* **Root Cause**: GCS service agent lacks `roles/cloudkms.cryptoKeyEncrypterDecrypter` on Cloud KMS key.
-* **Resolution Command**: Grant KMS Encrypter/Decrypter role to GCS service agent:
+#### How to Verify Configuration Correctness:
 ```bash
-# 1. Retrieve GCS Service Agent email
-GCS_SA=$(gcloud storage service-agent)
+gcloud storage buckets describe gs://gcd-prod-company-assets --format="value(encryption.defaultKmsKeyName)"
+```
 
-# 2. Grant KMS CryptoKey Encrypter/Decrypter role
-gcloud kms keys add-iam-policy-binding my-key \
-    --keyring=my-ring \
-    --location=us \
-    --member="serviceAccount:${GCS_SA}" \
-    --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
+#### Expected Verification Output:
+```text
+projects/YOUR_PROJECT/locations/us/keyRings/my-ring/cryptoKeys/my-key
 ```
 
 ---
 
-## Category 7: Error Diagnosis & Failure Resolution Matrix (Expanded)
+## Category 7: Error Diagnosis & Failure Resolution Matrix
 
-| Error Code / Message | Root Cause | Diagnosis Command | Immediate Resolution Command |
+| Error Code / Symptom | Root Cause | Diagnosis Command | Immediate Resolution Command |
 | :--- | :--- | :--- | :--- |
-| **`403 Forbidden: Caller does not have storage.objects.get`** | Missing IAM read permissions on target object | `gcloud storage buckets get-iam-policy gs://BUCKET` | `gcloud storage buckets add-iam-policy-binding gs://BUCKET --member="USER" --role="roles/storage.objectViewer"` |
-| **`409 BucketAlreadyExists`** | Bucket name taken globally | `gcloud storage buckets describe gs://BUCKET` | Re-create bucket using unique prefix: `gs://UNIQUE-PREFIX-BUCKET` |
-| **`400 Bad Request: Checksum mismatch`** | Network data corruption during upload | `gcloud storage cp FILE gs://BUCKET` | Re-upload enforcing CRC32c: `gcloud storage cp FILE gs://BUCKET --checksums=crc32c` |
-| **`AccessDenied: Uniform bucket-level access enabled`** | Tried setting per-object ACL on IAM-governed bucket | `gcloud storage buckets describe gs://BUCKET --format="json(iamConfiguration)"` | Do not use legacy ACL flags (`--acl`). Assign Cloud IAM roles instead via `add-iam-policy-binding`. |
-| **`SignatureDoesNotMatch (Signed URL)`** | Expired service account key or clock drift | `sudo ntpdate time.nist.gov` | Regenerate service account JSON key file and re-issue `gcloud storage sign-url`. |
-| **`403 RetentionPolicyLocked`** | Object locked under WORM retention compliance policy | `gcloud storage objects describe gs://BUCKET/FILE --format="value(retentionExpirationTime)"` | Wait for retention lock expiration date or write to a new version URI. |
-| **`403 Public Access Prevention Enforced`** | Org policy prevents assigning `allUsers` ACL | `gcloud storage buckets describe gs://BUCKET --format="value(publicAccessPrevention)"` | Disable prevention (`gcloud storage buckets update gs://BUCKET --clear-public-access-prevention`) OR use Signed URLs. |
-| **`403 KMS Key Access Denied`** | GCS Service Agent lacks permission on KMS CryptoKey | `gcloud storage service-agent` | Grant KMS CryptoKey role: `gcloud kms keys add-iam-policy-binding KEY --member="serviceAccount:GCS_SA" --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"` |
-| **`412 PreconditionFailed (ETag Mismatch)`** | Object modified by another process during update | `gcloud storage objects describe gs://BUCKET/FILE --format="value(etag)"` | Re-fetch latest object version before retrying update stream. |
-| **`429 RateLimitExceeded (QPS Exceeded)`** | High write/delete traffic targeting single object prefix | `gcloud storage ls gs://BUCKET/prefix/` | Distribute uploads across randomized hash prefixes (e.g. `gs://BUCKET/a1b2/file.png`). |
-| **`404 BucketNotFound`** | Bucket deleted or URI typo | `gcloud storage buckets list` | Verify exact bucket spelling or re-create bucket. |
-| **`VPC Service Controls Violation`** | Security perimeter blocks API request outside boundary | `gcloud access-context-manager zone-describe PERIMETER` | Request security admin to add client IP or identity to VPC-SC Access Level whitelist. |
+| **`409 BucketAlreadyExists`** | Bucket name is already globally reserved by another project. | `gcloud storage buckets describe gs://BUCKET` | Re-run with unique suffix: `gs://gcd-prod-assets-$(date +%s)` |
+| **`403 AccessDenied`** | User lacks `roles/storage.admin` or `roles/storage.objectAdmin`. | `gcloud config get-value account` | Grant permission: `gcloud projects add-iam-policy-binding PROJECT --member="USER" --role="roles/storage.admin"` |
+| **`400 Bad Request (Checksum Mismatch)`** | Corrupted data stream during transfer. | `gcloud storage cp FILE gs://BUCKET/` | Force CRC32c checksum validation: `--checksums=crc32c` |
+| **`404 Not Found`** | Object key or URI path does not exist. | `gcloud storage ls gs://BUCKET/` | Search recursively: `gcloud storage ls --recursive "gs://BUCKET/**/file"` |
