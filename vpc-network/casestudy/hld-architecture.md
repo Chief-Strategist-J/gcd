@@ -117,15 +117,58 @@ graph TD
     FW -.->|Enforced on vNIC| VMEU
 ```
 
-### Architectural Properties:
-- **Global VPC Scope**: Unlike AWS VPCs (which are regional), GCP VPC networks are **Global**. Subnets within a single VPC can be created in any region worldwide, and VMs in different regions communicate privately over Google's global backbone (`B4`) without public Internet exposure.
-- **Regional Subnet Scope**: Subnets are **Regional** resources. However, a single subnet spans **all Availability Zones** within its assigned region.
-- **Distributed Firewall Scope**: Firewall rules are defined at the VPC level (or organization/folder level) but enforced **locally at each VM's hypervisor interface**. There are no centralized firewall chokepoints or bottleneck virtual appliances.
-- **Global Routing Table**: Each VPC network maintains a single global routing table containing default subnet routes (`10.128.0.0/20`, `10.132.0.0/20`) and an Default Internet Gateway route (`0.0.0.0/0`).
+---
+
+## 4. Firewall and Route Interconnection Matrix
+
+In Google Cloud VPC networking, **Virtual Routing Tables** and the **Distributed Firewall Engine** act as two distinct security and forwarding layers operating in sequence inside the hypervisor's Andromeda Host Packet Processor (HPP).
+
+### Egress vs. Ingress Interconnection Evaluation Order
+
+```mermaid
+graph TD
+    classDef start fill:#1E293B,stroke:#38BDF8,stroke-width:2px,color:#F8FAFC;
+    classDef fw fill:#064E3B,stroke:#34D399,stroke-width:2px,color:#F8FAFC;
+    classDef route fill:#4C1D95,stroke:#C084FC,stroke-width:2px,color:#F8FAFC;
+    classDef drop fill:#881337,stroke:#FB7185,stroke-width:2px,color:#F8FAFC;
+    classDef pass fill:#14532D,stroke:#4ADE80,stroke-width:2px,color:#F8FAFC;
+
+    subgraph EgressPipeline ["EGRESS PROCESSING PIPELINE (Source Host Hypervisor)"]
+        OutPkt["1. Guest VM Transmits Outbound Packet"]:::start --> EgressCT{"In Conntrack Table?"}:::fw
+        EgressCT -->|Yes: Established Flow| EgressRoute
+        EgressCT -->|No| EgressFW{"2. Egress Firewall Check:<br/>Priority 0 -> 65535"}:::fw
+        
+        EgressFW -->|DENY| DropEgressFW["PACKET DROPPED (Egress Firewall Block)<br/>Routing Table Never Queried!"]:::drop
+        EgressFW -->|ALLOW| EgressRoute{"3. Virtual Routing Lookup:<br/>Longest Prefix Match (LPM)"}:::route
+
+        EgressRoute -->|No Route Match| DropEgressRoute["PACKET DROPPED (ENETUNREACH)<br/>No route found to destination IP"]:::drop
+        EgressRoute -->|Route Found| Encap["4. Geneve Header Encapsulation<br/>Transmit to Physical Wire"]:::pass
+    end
+
+    subgraph IngressPipeline ["INGRESS PROCESSING PIPELINE (Destination Host Hypervisor)"]
+        InPkt["5. Physical Wire Frame Arrives at Host B"]:::start --> Decap["6. Decapsulate Geneve Outer Header"]:::pass
+        Decap --> IngressCT{"In Conntrack Table?"}:::fw
+        IngressCT -->|Yes: Established Flow| InjectTap["8. Inject Packet to Target VM Tap"]:::pass
+        IngressCT -->|No| IngressFW{"7. Ingress Firewall Check:<br/>Priority 0 -> 65535"}:::fw
+
+        IngressFW -->|DENY| DropIngressFW["PACKET DROPPED (Ingress Firewall Block)<br/>Logged as security drop"]:::drop
+        IngressFW -->|ALLOW| InjectTap
+    end
+
+    Encap --> InPkt
+```
+
+### Routing Table Precedence & Selection Rules
+
+When a packet passes the Egress Firewall check, Andromeda evaluates the VPC's global virtual routing table using the following strict hierarchy:
+
+1. **Longest Prefix Match (LPM)**: The route with the most specific subnet mask wins. For example, a route to `10.128.0.0/24` is chosen over `10.0.0.0/8`.
+2. **Route Priority (Metric)**: If two routes have identical destination prefixes, the route with the **lowest priority integer** wins (e.g. Priority `100` beats Priority `1000`).
+3. **Equal-Cost Multi-Path (ECMP)**: If multiple routes have identical destination prefixes and identical priorities, Andromeda spreads traffic across all matching next-hops using a 5-tuple hash.
 
 ---
 
-## 4. Auto Mode vs. Custom Mode Topology
+## 5. Auto Mode vs. Custom Mode Topology
 
 ```mermaid
 graph LR
@@ -152,7 +195,7 @@ graph LR
 
 ---
 
-## 5. Cross-VPC Network Isolation Architecture
+## 6. Cross-VPC Network Isolation Architecture
 
 GCP VPC networks enforce **strict multi-tenant RFC 1918 isolation**.
 
@@ -181,9 +224,6 @@ graph TD
     LookupExternal -->|Match Default Gateway 0.0.0.0/0| PassAction["PACKET ROUTED OVER EDGE GATEWAY<br/>Ingress Rule: ALLOW ICMP<br/>Status: SUCCESS"]:::allow
     PassAction --> VM2
 ```
-
-- **Why Internal Ping Fails Cross-VPC**: When `mynet-us-vm` (in `mynetwork`) attempts to ping `10.130.0.2` (in `managementnet`), the Andromeda packet processor checks the routing table scoped to `mynetwork`. Because `10.130.0.2` does not exist in `mynetwork`'s routing table, the packet is dropped at the source host hypervisor before ever traversing the physical wire.
-- **Why External Ping Succeeds Cross-VPC**: When `mynet-us-vm` pings `managementnet-us-vm`'s public External IP (`35.188.20.220`), the packet matches `mynetwork`'s default internet gateway route (`0.0.0.0/0`), traverses GCP Edge Routers, is NATed, and arrives at `managementnet-us-vm` via ingress firewall allowance.
 
 ---
 

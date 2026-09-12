@@ -124,7 +124,98 @@ graph TD
     RouteLookup -->|Target IP Not Found in Tenant Routing Table| DropNode
 ```
 
-Because separate VPC networks maintain completely isolated routing tables in Andromeda's control plane, `mynetwork` has no knowledge of `managementnet`'s subnets. The packet is dropped in host memory without consuming data center bandwidth.
+---
+
+## 5. User-Centric End-to-End Client Traversal Flow
+
+This section details how an **external user on the Internet** connects to an application running inside a GCP Compute Engine VM across the entire Google network perimeter, edge infrastructure, load balancers, and hypervisor stack.
+
+### Client-to-Application End-to-End Flowchart
+
+```mermaid
+graph TD
+    classDef client fill:#1E293B,stroke:#38BDF8,stroke-width:2px,color:#F8FAFC;
+    classDef edge fill:#451A03,stroke:#F97316,stroke-width:2px,color:#F8FAFC;
+    classDef proxy fill:#4C1D95,stroke:#C084FC,stroke-width:2px,color:#F8FAFC;
+    classDef gcp fill:#064E3B,stroke:#34D399,stroke-width:2px,color:#F8FAFC;
+    classDef vm fill:#1E1B4B,stroke:#818CF8,stroke-width:2px,color:#F8FAFC;
+
+    subgraph UserPerimeter ["1. USER CLIENT PERIMETER"]
+        User["User Browser / Client<br/>Types https://myapp.company.com"]:::client
+        DNS["Cloud DNS / Anycast<br/>Resolves VIP: 34.120.50.10"]:::client
+    end
+
+    subgraph GoogleEdge ["2. GOOGLE EDGE INFRASTRUCTURE (Point of Presence)"]
+        BGP["BGP Anycast Edge Router<br/>Ingress to Google Fiber Network"]:::edge
+        Maglev["Maglev L4 Load Balancer<br/>Consistent Hash Flow Distribution"]:::edge
+        Armor["Cloud Armor WAF Security<br/>GeoIP, DDoS, SQLi/XSS Inspection"]:::edge
+        Envoy["Envoy L7 Global Proxy<br/>TLS Termination, Header Injection"]:::proxy
+    end
+
+    subgraph GoogleBackbone ["3. PRIVATE GLOBAL WAN (B4 Backbone)"]
+        B4Fiber["B4 Fiber WAN Trunking<br/>Fast-Path Transit to Target Region"]:::gcp
+    end
+
+    subgraph HypervisorHost ["4. TARGET HOST HYPERVISOR (Andromeda SDN)"]
+        Gateway["Subnet Virtual Gateway<br/>10.128.0.1"]:::gcp
+        HPP["Andromeda Host Packet Processor<br/>1:1 NAT (34.120.50.10 -> 10.128.0.2)"]:::gcp
+        Conntrack["Stateful Conntrack Table<br/>Log 5-Tuple Hash"]:::gcp
+        Firewall{"Ingress Firewall Check:<br/>ALLOW tcp:80,443"}:::gcp
+        Tap["Host Tap Interface (tap1234)"]:::gcp
+    end
+
+    subgraph TargetVM ["5. COMPUTE ENGINE INSTANCE (Guest OS)"]
+        Virtio["Virtio-Net Ring Buffer"]:::vm
+        Socket["Linux Kernel Socket"]:::vm
+        App["Web Application Server<br/>NGINX / Node.js Process"]:::vm
+    end
+
+    User -->|DNS Query| DNS
+    DNS -->|Returns VIP 34.120.50.10| User
+    User -->|HTTPS Request| BGP
+    BGP --> Maglev --> Armor --> Envoy
+    Envoy -->|Decrypted HTTP/2 Frame| B4Fiber
+    B4Fiber --> Gateway --> HPP
+    HPP --> Conntrack --> Firewall
+    Firewall -->|ALLOW| Tap
+    Tap --> Virtio --> Socket --> App
+```
+
+### End-to-End Client Traversal Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as External Client / Browser
+    participant DNS as Cloud DNS Anycast
+    participant Edge as Google Edge / Maglev PoP
+    participant Envoy as Envoy L7 Proxy & WAF
+    participant B4 as B4 Global WAN Backbone
+    participant HPP as Andromeda Host Packet Processor
+    participant FW as Host Stateful Firewall Engine
+    participant VM as Target Guest OS (mynet-us-vm)
+    participant App as Web App (NGINX / Node.js)
+
+    User->>DNS: Resolve myapp.company.com
+    DNS-->>User: Return Public Anycast VIP (34.120.50.10)
+    User->>Edge: TCP SYN to 34.120.50.10:443 (via BGP Anycast)
+    Edge->>Envoy: Route packet to Maglev / Envoy Proxy Cluster
+    Note over Envoy: TLS Handshake Completed<br/>Cloud Armor WAF Rules Evaluated (ALLOW)<br/>Inject X-Forwarded-For Header
+    Envoy->>B4: Forward Decrypted Flow over B4 Backbone to us-central1
+    B4->>HPP: Deliver Encapsulated Packet to Destination Host Hypervisor
+    Note over HPP: Translate VIP 34.120.50.10 -> Private IP 10.128.0.2 (1:1 NAT)<br/>Lookup Conntrack Session Table
+    HPP->>FW: Evaluate Ingress Firewall Rules
+    FW-->>HPP: Rule Match: Priority 1000 ALLOW tcp:443
+    HPP->>VM: Inject Ethernet Frame into Virtio Ring Buffer via Tap
+    VM->>App: Deliver Socket Payload to Web Server Process
+    Note over App: App processes request & generates HTTP 200 OK Response
+    App->>VM: Write HTTP Response Payload to Socket
+    VM->>HPP: Transmit Response Packet to Tap Interface
+    Note over HPP: Matches Conntrack Session Tuple (Automatic Stateful Pass)<br/>Apply Egress NAT Translation
+    HPP->>B4: Transmit Response Frame back over B4 Fiber
+    B4->>Envoy: Deliver Response to Envoy Proxy
+    Envoy-->>User: Send TLS Encrypted HTTP 200 OK to Client Browser
+```
 
 ---
 
