@@ -1,375 +1,477 @@
-# Kubernetes & Container Lifecycle: 15-Category Master Reference Manual
+# Kubernetes & Container Lifecycle: Complete Command, Verification & Operations Manual
 
-This document is an exhaustive, production-grade reference manual for **Kubernetes (`kubectl`) and Container Lifecycle Operations**. It combines container building, image vulnerability scanning, multi-stage Dockerfiles, resource memory monitoring, start/stop/restart/destroy lifecycle control, cluster context switching, GitOps/Kustomize/Helm workflows, advanced JSONPath queries, secret decryption, network DNS diagnostics, distributed tracing, ephemeral container debugging, node maintenance, raw API introspection, and an **Exhaustive 18-Row Failure Resolution Matrix**.
+This document is an exhaustive, production-grade manual for **Kubernetes (`kubectl`) and Container Lifecycle Operations**. Each section provides:
+1. **Command to Execute**
+2. **Expected Terminal Output (What to read & look for)**
+3. **Verification & Correctness Check (How to confirm if your configuration is correct or broken)**
 
 ---
 
-## Master Table of Contents
-1. [Category 1: Container Image Building, Optimization & Security Scanning](#category-1-container-image-building-optimization--security-scanning)
+## Table of Contents
+1. [Category 1: Container Image Building & Security Verification](#category-1-container-image-building--security-verification)
 2. [Category 2: Image & Container Resource Memory Monitoring](#category-2-image--container-resource-memory-monitoring)
 3. [Category 3: Complete Start, Stop, Restart & Destroy Lifecycle (Containers, Pods, Nodes)](#category-3-complete-start-stop-restart--destroy-lifecycle-containers-pods-nodes)
-4. [Category 4: Cluster Context, Configuration & Multi-Cluster Management (`kubectl config`)](#category-4-cluster-context-configuration--multi-cluster-management-kubectl-config)
-5. [Category 5: Declarative Manifest Management, GitOps, Kustomize & Helm](#category-5-declarative-manifest-management-gitops-kustomize--helm)
-6. [Category 6: Advanced Output Formatting, JSONPath & Go-Templates](#category-6-advanced-output-formatting-jsonpath--go-templates)
-7. [Category 7: Workload Deployment, Rolling Updates, Canary & Blue-Green Releases](#category-7-workload-deployment-rolling-updates-canary--blue-green-releases)
-8. [Category 8: ConfigMaps, Secrets, Certificates & Decrypting Configurations](#category-8-configmaps-secrets-certificates--decrypting-configurations)
-9. [Category 9: Persistent Volume (PV), PVC & Storage Operations](#category-9-persistent-volume-pv-pvc--storage-operations)
-10. [Category 10: Networking, Service Exposure, DNS & Port-Forwarding](#category-10-networking-service-exposure-dns--port-forwarding)
+4. [Category 4: Cluster Context & Multi-Cluster Management (`kubectl config`)](#category-4-cluster-context--multi-cluster-management-kubectl-config)
+5. [Category 5: Configuration Validation, Dry-Runs, Kustomize & Helm Verification](#category-5-configuration-validation-dry-runs-kustomize--helm-verification)
+6. [Category 6: Advanced Output Formatting & JSONPath Queries](#category-6-advanced-output-formatting--jsonpath-queries)
+7. [Category 7: Workload Deployment, Rolling Updates & Canary Verification](#category-7-workload-deployment-rolling-updates--canary-verification)
+8. [Category 8: ConfigMaps, Secrets, Certificates & Secret Decryption](#category-8-configmaps-secrets-certificates--secret-decryption)
+9. [Category 9: Persistent Volume (PV) & PVC Storage Verification](#category-9-persistent-volume-pv--pvc-storage-verification)
+10. [Category 10: Networking, Service Exposure, DNS & Routing Verification](#category-10-networking-service-exposure-dns--routing-verification)
 11. [Category 11: Strategic Patching, Labeling & Annotating](#category-11-strategic-patching-labeling--annotating)
 12. [Category 12: Comprehensive Log Inspection & Console Output Tailing](#category-12-comprehensive-log-inspection--console-output-tailing)
-13. [Category 13: Distributed Tracing & Observability Reference](#category-13-distributed-tracing--observability-reference)
-14. [Category 14: Deep Diagnostic, Ephemeral Debugging, Node Maintenance & RBAC Security](#category-14-deep-diagnostic-ephemeral-debugging-node-maintenance--rbac-security)
+13. [Category 13: Distributed Tracing & Observability Verification](#category-13-distributed-tracing--observability-verification)
+14. [Category 14: Ephemeral Container Debugging, Node Maintenance & Security Audit](#category-14-ephemeral-container-debugging-node-maintenance--security-audit)
 15. [Category 15: Exhaustive Failure Diagnosis & Resolution Matrix](#category-15-exhaustive-failure-diagnosis--resolution-matrix)
 
 ---
 
-## Category 1: Container Image Building, Optimization & Security Scanning
+## Category 1: Container Image Building & Security Verification
 
-### 1. Multi-Stage Container Build (`docker` / `podman` / `buildah`)
+### 1. Multi-Stage Container Build (`docker` / `podman`)
+
 ```bash
-# Enable Docker BuildKit for parallel stage execution and caching
+# Build multi-stage container image for targeted architecture
 DOCKER_BUILDKIT=1 docker build \
     --platform linux/amd64 \
     --build-arg APP_VERSION=2.4.0 \
-    --build-arg BUILD_ENV=production \
-    --target production-stage \
     -t us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0 \
     -f ./Dockerfile .
 ```
 
-### 2. Container Image Vulnerability Scanning (`trivy`)
+#### Expected Terminal Output:
+```text
+[+] Building 14.2s (12/12) FINISHED
+ => [internal] load build definition from Dockerfile                              0.0s
+ => [internal] load .dockerignore                                                0.0s
+ => [builder 1/4] FROM golang:1.22-alpine                                       2.1s
+ => [production-stage 1/2] FROM alpine:3.19                                      1.2s
+ => [builder 2/4] COPY go.mod go.sum ./                                         0.1s
+ => [builder 3/4] RUN go mod download                                            4.5s
+ => [builder 4/4] RUN CGO_ENABLED=0 go build -o /app/server ./cmd/server         5.1s
+ => [production-stage 2/2] COPY --from=builder /app/server /app/server           0.2s
+ => exporting to image                                                           0.8s
+ => => naming to us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0  0.0s
+```
+
+#### How to Verify Configuration Correctness:
 ```bash
-# Scan container image for HIGH and CRITICAL CVE vulnerabilities before pushing
+# Check built image size and inspect layers
+docker images us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0
+```
+
+#### Expected Verification Output:
+```text
+REPOSITORY                                                   TAG       IMAGE ID       CREATED         SIZE
+us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app   v2.4.0    c4f82d19b7a0   10 seconds ago  22.4MB
+```
+
+---
+
+### 2. Vulnerability Scan Verification (`trivy`)
+
+```bash
 trivy image \
     --severity HIGH,CRITICAL \
     --exit-code 1 \
     us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0
 ```
-* **Note**: Exits with code `1` if critical security vulnerabilities are found, halting CI/CD pipeline deployment.
 
-### 3. Authenticate & Push to Google Artifact Registry / Docker Hub
-```bash
-# 1. Authenticate Docker with Google Artifact Registry
-gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
-
-# 2. Push versioned image to container registry
-docker push us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0
+#### Expected Output (Passed Security Check):
+```text
+us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0 (alpine 3.19.1)
+=================================================================================
+Total: 0 (HIGH: 0, CRITICAL: 0)
 ```
 
 ---
 
 ## Category 2: Image & Container Resource Memory Monitoring
 
+### 1. Monitor Pod Memory & CPU Usage (`kubectl top`)
+
 ```bash
-# 1. Real-time CPU and Memory consumption across Docker/Podman containers
-docker stats --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}"
-
-# 2. Low-level container runtime memory stats (crictl for containerd)
-crictl stats
-
-# 3. Sort Kubernetes pods by active Memory (RAM) consumption
-kubectl top pods -A --sort-by=memory
-
-# 4. Display worker node memory capacity vs allocatable vs usage
-kubectl top nodes
+kubectl top pods -n production --sort-by=memory
 ```
+
+#### Expected Terminal Output:
+```text
+NAME                      CPU(cores)   MEMORY(bytes)   
+web-app-74b89-x8q2z       15m          142Mi           
+web-app-74b89-m4k91       12m          138Mi           
+web-app-74b89-p2n77       10m          135Mi           
+```
+
+#### How to Verify Memory Configuration Correctness:
+```bash
+# Compare current usage (142Mi) against configured requests/limits
+kubectl get pod web-app-74b89-x8q2z -n production -o jsonpath='{.spec.containers[0].resources}'
+```
+
+#### Expected Verification Output:
+```text
+{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}
+```
+* **Correctness Analysis**: Active usage (`142Mi`) exceeds `requests` (`128Mi`) and remains safely under `limits` (`512Mi`). Configuration is optimal and not at risk of `OOMKilled`.
 
 ---
 
 ## Category 3: Complete Start, Stop, Restart & Destroy Lifecycle (Containers, Pods, Nodes)
 
-### 1. Container & Image Level (`docker` / `podman` / `crictl`)
+### 1. Container Level (`docker` / `crictl`)
 
 ```bash
-# START: Start an existing stopped container
+# START
 docker start web-container
-crictl start CONTAINER_ID
+# Expected Output: web-container
 
-# STOP: Gracefully stop container (SIGTERM followed by SIGKILL)
+# STOP
 docker stop --time=30 web-container
-crictl stop CONTAINER_ID
+# Expected Output: web-container
 
-# RESTART: Restart running container
+# RESTART
 docker restart web-container
+# Expected Output: web-container
 
-# DESTROY CONTAINER: Force remove container
+# DESTROY CONTAINER
 docker rm -f web-container
-crictl rm CONTAINER_ID
-
-# DESTROY IMAGE: Remove container image from local storage
-docker rmi us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0
-crictl rmi IMAGE_ID
+# Expected Output: web-container
 ```
 
-### 2. Kubernetes Pod & Deployment Level (`kubectl`)
+---
+
+### 2. Kubernetes Deployment Level (`kubectl`)
 
 ```bash
-# START / DEPLOY: Apply deployment manifest or scale up replicas
+# 1. START / DEPLOY
 kubectl apply -f ./deployment.yaml -n production
-kubectl scale deployment/web-app --replicas=3 -n production
+```
+#### Expected Terminal Output:
+```text
+deployment.apps/web-app created
+service/web-app-service created
+```
 
-# STOP / PAUSE: Scale deployment replicas to 0 (Pause all pods without deleting spec)
+#### How to Verify Deployment Correctness:
+```bash
+kubectl get deployment web-app -n production
+```
+#### Expected Verification Output:
+```text
+NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+web-app   3/3     3            3           25s
+```
+* **What to Read**: `READY` must show `3/3` matching `AVAILABLE` `3`. If `0/3`, pods are failing health probes.
+
+---
+
+```bash
+# 2. STOP / PAUSE (Scale to 0)
 kubectl scale deployment/web-app --replicas=0 -n production
+```
+#### Expected Terminal Output:
+```text
+deployment.apps/web-app scaled
+```
+#### How to Verify:
+```bash
+kubectl get deployment web-app -n production
+# Output: NAME web-app READY 0/0 AVAILABLE 0
+```
 
-# RESTART: Trigger zero-downtime rolling restart of all pods in deployment
+---
+
+```bash
+# 3. RESTART (Zero-Downtime Rolling Restart)
 kubectl rollout restart deployment/web-app -n production
+```
+#### Expected Terminal Output:
+```text
+deployment.apps/web-app restarted
+```
+#### How to Verify Restart Status:
+```bash
+kubectl rollout status deployment/web-app -n production
+```
+#### Expected Verification Output:
+```text
+Waiting for deployment "web-app" rollout to finish: 1 out of 3 new replicas have been updated...
+Waiting for deployment "web-app" rollout to finish: 2 out of 3 new replicas have been updated...
+deployment "web-app" successfully rolled out
+```
 
-# DESTROY POD / DEPLOYMENT: Delete specific pod or entire deployment
-kubectl delete pod web-app-74b89-x8q2z -n production
+---
+
+```bash
+# 4. DESTROY DEPLOYMENT
 kubectl delete deployment web-app -n production
-kubectl delete -f ./deployment.yaml -n production
+```
+#### Expected Terminal Output:
+```text
+deployment.apps "web-app" deleted
 ```
 
-### 3. Kubernetes Worker Node Level
+---
+
+### 3. Worker Node Maintenance (`cordon` / `drain` / `uncordon`)
 
 ```bash
-# STOP / PAUSE NODE: Cordon and gracefully drain pods for maintenance
+# 1. CORDON (Stop scheduling new pods)
 kubectl cordon worker-node-01
+```
+#### Expected Terminal Output:
+```text
+node/worker-node-01 cordoned
+```
+#### How to Verify Node Correctness:
+```bash
+kubectl get node worker-node-01
+```
+#### Expected Verification Output:
+```text
+NAME             STATUS                     ROLES    AGE   VERSION
+worker-node-01   Ready,SchedulingDisabled   <none>   45d   v1.36.2
+```
+
+---
+
+```bash
+# 2. DRAIN (Evict running pods safely)
 kubectl drain worker-node-01 --ignore-daemonsets --delete-emptydir-data --force --grace-period=60
+```
+#### Expected Terminal Output:
+```text
+evicting pod production/web-app-74b89-x8q2z
+evicting pod production/web-app-74b89-m4k91
+pod/web-app-74b89-x8q2z evicted
+pod/web-app-74b89-m4k91 evicted
+node/worker-node-01 drained
+```
 
-# START / RESUME NODE: Uncordon node to restore pod scheduling
+---
+
+```bash
+# 3. UNCORDON (Restore scheduling availability)
 kubectl uncordon worker-node-01
-
-# DESTROY NODE: Remove worker node object from Kubernetes cluster
-kubectl delete node worker-node-01
+# Expected Output: node/worker-node-01 uncordoned
 ```
 
 ---
 
-## Category 4: Cluster Context, Configuration & Multi-Cluster Management (`kubectl config`)
+## Category 4: Cluster Context & Multi-Cluster Management (`kubectl config`)
 
 ```bash
-# 1. View complete merged kubeconfig file
-kubectl config view
-kubectl config view --raw
-
-# 2. List all available cluster contexts & display current context
-kubectl config get-contexts
-kubectl config current-context
-
-# 3. Switch active context to production cluster
+# Switch active context to production
 kubectl config use-context prod-gke-us-central1
+```
+#### Expected Terminal Output:
+```text
+Switched to context "prod-gke-us-central1".
+```
 
-# 4. Set default namespace for active context
-kubectl config set-context --current --namespace=production
-
-# 5. Merge multiple kubeconfig files into a single unified file
-KUBECONFIG=~/.kube/config1:~/.kube/config2 kubectl config view --flatten > ~/.kube/config
+#### How to Verify Active Context Correctness:
+```bash
+kubectl config current-context
+# Expected Output: prod-gke-us-central1
 ```
 
 ---
 
-## Category 5: Declarative Manifest Management, GitOps, Kustomize & Helm
+## Category 5: Configuration Validation, Dry-Runs, Kustomize & Helm Verification
 
-### 1. Inspect Field Schema Specifications (`kubectl explain`)
-```bash
-# Drill down into exact YAML schema fields and requirements
-kubectl explain pod.spec.containers.resources.limits
-kubectl explain deployment.spec.strategy --recursive
-```
+### 1. Server Dry-Run Validation (`--dry-run=server`)
 
-### 2. Declarative Apply & GitOps Manifest Validation
 ```bash
-# Validate local YAML syntax against API server schema without applying
+# Validate YAML syntax and server API schema without persisting change
 kubectl apply -f ./deployment.yaml --dry-run=server
-
-# Apply full manifest directory recursively
-kubectl apply -f ./manifests/ --recursive -n production
 ```
-
-### 3. Live Cluster Manifest Diff (`kubectl diff`)
-```bash
-# Compare local Git repository YAML against live cluster state
-kubectl diff -f ./manifests/production/
+#### Expected Terminal Output (Valid Config):
+```text
+deployment.apps/web-app configured (server dry run)
 ```
-
-### 4. Kustomize Overlay Build & Pipeline Execution
-```bash
-# Build and apply Kustomize production overlay directly
-kubectl kustomize ./overlays/production | kubectl apply -f -
-```
-
-### 5. Configuring & Packaging Helm Charts
-```bash
-# Lint, template, and package Helm chart
-helm lint ./charts/web-app
-helm template web-release ./charts/web-app -f ./charts/web-app/values-production.yaml
-helm package ./charts/web-app
-```
-
-### 6. Declarative Garbage Collection (`--prune`)
-```bash
-# Apply directory and delete cluster resources whose files were removed from Git
-kubectl apply -f ./manifests/ --prune --all --selector=app=my-service
+#### Expected Output (Invalid Config / Broken Schema):
+```text
+error: error validating "./deployment.yaml": error validating data: ValidationError(Deployment.spec): missing required field "selector"; if you choose to ignore these errors, turn off validation with --validate=false
 ```
 
 ---
 
-## Category 6: Advanced Output Formatting, JSONPath & Go-Templates
+### 2. Preview Manifest Differences (`kubectl diff`)
 
-### 1. Extract Base64-Decoded Secret Values in One Command
+```bash
+kubectl diff -f ./deployment.yaml
+```
+#### Expected Output (Shows Exact GitOps Changes):
+```diff
+--- /tmp/LIVE-192837/deployment.yaml
++++ /tmp/LOCAL-902183/deployment.yaml
+@@ -18,3 +18,3 @@
+       containers:
+       - name: web
+-        image: nginx:1.25-alpine
++        image: nginx:1.26-alpine
+```
+
+---
+
+## Category 6: Advanced Output Formatting & JSONPath Queries
+
+### 1. Extract & Decrypt Secret Password in One Command
+
 ```bash
 kubectl get secret db-credentials -n production -o jsonpath='{.data.password}' | base64 --decode; echo
 ```
-
-### 2. Extract Container Images Across All Deployments
-```bash
-kubectl get deployments -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{range .spec.template.spec.containers[*]}{.image}{" "}{end}{"\n"}{end}'
-```
-
-### 3. List All Pods with Restart Counts > 0
-```bash
-kubectl get pods -A -o jsonpath='{range .items[?(@.status.containerStatuses[0].restartCount>0)]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.status.containerStatuses[0].restartCount}{"\n"}{end}'
-```
-
-### 4. Custom Column Formatting for Node Memory & Internal IPs
-```bash
-kubectl get nodes -o custom-columns=NAME:.metadata.name,IP:.status.addresses[?(@.type=="InternalIP")].address,CPU:.status.capacity.cpu,MEMORY:.status.capacity.memory
-```
-
-### 5. Set-Based Label & Field Selectors
-```bash
-kubectl get pods -n production -l 'environment in (production, staging),tier!=frontend' --field-selector status.phase=Running
+#### Expected Terminal Output:
+```text
+SuperSecretPass123!
 ```
 
 ---
 
-## Category 7: Workload Deployment, Rolling Updates, Canary & Blue-Green Releases
+### 2. Query Pods Restart Counts
 
-### 1. Imperative Blueprint Generation
 ```bash
-kubectl create deployment web-app --image=nginx:1.25-alpine --replicas=3 --port=8080 --dry-run=client -o yaml > deployment.yaml
-kubectl create job data-migration --image=python:3.11 --dry-run=client -o yaml > job.yaml
-kubectl create cronjob hourly-backup --schedule="0 * * * *" --image=busybox --dry-run=client -o yaml > cronjob.yaml
+kubectl get pods -n production -o jsonpath='{range .items[*]}{.metadata.name}{"\tRestarts: "}{.status.containerStatuses[0].restartCount}{"\n"}{end}'
+```
+#### Expected Terminal Output:
+```text
+web-app-74b89-x8q2z     Restarts: 0
+web-app-74b89-m4k91     Restarts: 2
+web-app-74b89-p2n77     Restarts: 0
 ```
 
-### 2. Zero-Downtime Rolling Update Strategy
+---
+
+## Category 7: Workload Deployment, Rolling Updates & Canary Verification
+
+### 1. Rolling Image Update (`kubectl set image`)
+
 ```bash
-# 1. Update container image version
 kubectl set image deployment/web-app web=nginx:1.26-alpine -n production --record
+```
+#### Expected Terminal Output:
+```text
+deployment.apps/web-app image updated
+```
 
-# 2. Configure rolling update strategy parameters (maxSurge=25%, maxUnavailable=0)
-kubectl patch deployment web-app -n production --type='strategic' -p '
-{
-  "spec": {
-    "strategy": {
-      "rollingUpdate": {
-        "maxSurge": "25%",
-        "maxUnavailable": 0
-      }
-    }
-  }
-}'
-
-# 3. Check live rollout progress & history
+#### How to Verify Rolling Update Correctness:
+```bash
+# Check rollout status
 kubectl rollout status deployment/web-app -n production
-kubectl rollout history deployment/web-app -n production
+```
+#### Expected Verification Output:
+```text
+Waiting for deployment "web-app" rollout to finish: 1 of 3 updated replicas are available...
+Waiting for deployment "web-app" rollout to finish: 2 of 3 updated replicas are available...
+deployment "web-app" successfully rolled out
+```
 
-# 4. Instant rollback to previous revision
+---
+
+### 2. Immediate Rollback (`kubectl rollout undo`)
+
+```bash
 kubectl rollout undo deployment/web-app -n production
 ```
-
-### 3. Blue-Green Deployment Cutover
-```bash
-# Switch Service selector to green deployment (v2)
-kubectl patch service web-app-service -n production -p '{"spec":{"selector":{"version":"v2"}}}'
-```
-
-### 4. Horizontal Pod Autoscaler (HPA) & Pod Disruption Budget (PDB)
-```bash
-# Autoscale between 3 and 20 pods at 70% CPU target
-kubectl autoscale deployment/web-app --min=3 --max=20 --cpu-percent=70 -n production
-
-# Create PDB enforcing 80% minimum available pods
-kubectl create pdb web-app-pdb --selector=app=web-app --min-available=80% -n production
+#### Expected Terminal Output:
+```text
+deployment.apps/web-app rolled back
 ```
 
 ---
 
-## Category 8: ConfigMaps, Secrets, Certificates & Decrypting Configurations
+## Category 8: ConfigMaps, Secrets, Certificates & Secret Decryption
 
-### 1. Create ConfigMaps & Secrets
+### 1. Create Secret from Literals
+
 ```bash
-# Create ConfigMap from env file
-kubectl create configmap app-config --from-env-file=./app.env -n production
-
-# Create Secret from literal values
-kubectl create secret generic app-secrets --from-literal=DB_PASS='Secret123!' -n production
-
-# Create TLS Secret from certificate & key files
-kubectl create secret tls app-tls-cert --cert=./tls.crt --key=./tls.key -n production
-
-# Create Docker Registry pull secret
-kubectl create secret docker-registry reg-cred \
-    --docker-server=https://index.docker.io/v1/ \
-    --docker-username=myuser \
-    --docker-password=mypassword \
-    --docker-email=myuser@example.com -n production
+kubectl create secret generic app-secrets \
+    --from-literal=DB_PASS='Secret123!' \
+    -n production
+```
+#### Expected Terminal Output:
+```text
+secret/app-secrets created
 ```
 
-### 2. Reading ConfigMaps & Decrypting Secrets
+#### How to Verify Secret Creation & Decrypt All Keys:
 ```bash
-# 1. View ConfigMap YAML
-kubectl get configmap app-config -n production -o yaml
-
-# 2. Decrypt single secret key
-kubectl get secret app-secrets -n production -o jsonpath='{.data.DB_PASS}' | base64 --decode; echo
-
-# 3. Decrypt ALL secret key-value pairs in a namespace using jq
 kubectl get secret app-secrets -n production -o json | jq '.data | map_values(@base64d)'
-
-# 4. Read running container environment variables
-kubectl exec -it pod/web-app-74b89-x8q2z -c web -n production -- printenv
+```
+#### Expected Verification Output:
+```json
+{
+  "DB_PASS": "Secret123!"
+}
 ```
 
 ---
 
-## Category 9: Persistent Volume (PV), PVC & Storage Operations
+## Category 9: Persistent Volume (PV) & PVC Storage Verification
 
 ```bash
-# List all PersistentVolumeClaims across namespaces
-kubectl get pvc -A
-
-# Inspect PV binding status and volume capacity
-kubectl get pv -o custom-columns=NAME:.metadata.name,CAPACITY:.spec.capacity.storage,RECLAIM:.spec.persistentVolumeReclaimPolicy,STATUS:.status.phase,CLAIM:.spec.claimRef.name
-
-# Verify StorageClasses available in cluster
-kubectl get storageclass
+kubectl get pvc -n production
 ```
+#### Expected Terminal Output:
+```text
+NAME             STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+db-data-pvc      Bound    pvc-8921a4f0-901b-4c22-b91c-1a2b3c4d5e6f   100Gi      RWO            pd-ssd         5d
+```
+* **What to Read**: `STATUS` MUST read `Bound`. If `Pending`, storage provisioner failed.
 
 ---
 
-## Category 10: Networking, Service Exposure, DNS & Port-Forwarding
+## Category 10: Networking, Service Exposure, DNS & Routing Verification
 
-### 1. Service Exposure & Port Forwarding
+### 1. Expose Service via LoadBalancer
+
 ```bash
-# Expose deployment internally (ClusterIP)
-kubectl expose deployment web-app --port=80 --target-port=8080 --name=web-service -n production
-
-# Forward local port 8080 to remote pod port 80
-kubectl port-forward pod/web-app-74b89-x8q2z 8080:80 -n production
-
-# Run local HTTP proxy to Kubernetes API server
-kubectl proxy --port=8001
+kubectl expose deployment web-app --type=LoadBalancer --port=80 --target-port=8080 --name=web-service -n production
+```
+#### Expected Terminal Output:
+```text
+service/web-service exposed
 ```
 
-### 2. Service Endpoints & EndpointSlices Inspection
+#### How to Verify Service & External IP Assignment:
 ```bash
-# List active endpoint IP addresses attached to services
-kubectl get endpoints -A
-kubectl get endpointslices -A
+kubectl get service web-service -n production
 ```
+#### Expected Verification Output:
+```text
+NAME          TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)        AGE
+web-service   LoadBalancer   10.96.14.202   35.202.110.42   80:31920/TCP   45s
+```
+* **What to Read**: Verify `EXTERNAL-IP` changes from `<pending>` to valid IP (`35.202.110.42`).
 
-### 3. Inter-Pod DNS Resolution & Routing Diagnostics
+---
+
+### 2. Verify Service Endpoint Attachments
+
 ```bash
-# Test CoreDNS resolution inside pod
+kubectl get endpoints web-service -n production
+```
+#### Expected Verification Output:
+```text
+NAME          ENDPOINTS                                        AGE
+web-service   10.244.1.15:8080,10.244.2.20:8080,10.244.2.21:8080   1m
+```
+* **Correctness Analysis**: IP addresses listed in `ENDPOINTS` match active Pod IPs. If `<none>`, readiness probes are failing.
+
+---
+
+### 3. DNS Resolution Diagnostics
+
+```bash
 kubectl exec -it pod/web-app-74b89-x8q2z -n production -- nslookup postgres-service.production.svc.cluster.local
+```
+#### Expected Verification Output:
+```text
+Server:         10.96.0.10
+Address:        10.96.0.10#53
 
-# Inspect IPVS routing table on worker node
-sudo ipvsadm -ln
-
-# Inspect iptables KUBE-SERVICES chain on worker node
-sudo iptables-save | grep KUBE-SERVICES
+Name:   postgres-service.production.svc.cluster.local
+Address: 10.96.42.180
 ```
 
 ---
@@ -377,119 +479,101 @@ sudo iptables-save | grep KUBE-SERVICES
 ## Category 11: Strategic Patching, Labeling & Annotating
 
 ```bash
-# 1. Strategic Merge Patch deployment env variable
-kubectl patch deployment web-app -n production --type='strategic' -p '{"spec":{"template":{"spec":{"containers":[{"name":"web","env":[{"name":"LOG_LEVEL","value":"DEBUG"}]}]}}}}'
-
-# 2. JSON Patch array element removal
-kubectl patch deployment web-app -n production --type='json' -p='[{"op": "remove", "path": "/spec/template/spec/containers/0/resources/limits"}]'
-
-# 3. Labeling and Annotating
-kubectl label pod web-app-74b89-x8q2z tier=frontend environment=production --overwrite -n production
-kubectl annotate deployment web-app description="Production release approved by Ops" -n production
+kubectl patch deployment web-app -n production --type='strategic' -p '
+{
+  "spec": {
+    "template": {
+      "spec": {
+        "containers": [
+          {
+            "name": "web",
+            "env": [{"name": "LOG_LEVEL", "value": "DEBUG"}]
+          }
+        ]
+      }
+    }
+  }
+}'
+```
+#### Expected Terminal Output:
+```text
+deployment.apps/web-app patched
 ```
 
 ---
 
 ## Category 12: Comprehensive Log Inspection & Console Output Tailing
 
-### 1. Tailing & Filtering Pod Console Outputs (stdout / stderr)
+### 1. Separate stdout and stderr Streams
 
 ```bash
-# 1. Stream live logs from pod
-kubectl logs -f pod/web-app-74b89-x8q2z -n production
-
-# 2. Separate stdout (Standard Output) from stderr (Standard Error) streams
 kubectl logs pod/web-app-74b89-x8q2z -n production 1> stdout.log 2> stderr.log
-
-# 3. Stream logs from a specific container in a multi-container pod
-kubectl logs -f pod/web-app-74b89-x8q2z -c nginx-sidecar -n production
-
-# 4. Stream logs from ALL containers in pods matching a label
-kubectl logs -l app=web-app --all-containers=true -f --tail=100 -n production
-
-# 5. Read logs from PREVIOUS crashed container instance (Crucial for CrashLoopBackOff)
-kubectl logs pod/web-app-74b89-x8q2z --previous -c web -n production
-
-# 6. Time-based log filtering (Logs from last 30 minutes or timestamp)
-kubectl logs deployment/web-app --since=30m -n production
-kubectl logs deployment/web-app --since-time=2026-09-12T10:00:00Z -n production
 ```
+* **What to Read**: `stdout.log` contains application access logs; `stderr.log` contains warnings and exception stack traces.
 
-### 2. Node Level & System Logs (`journalctl` / `/var/log`)
+---
+
+### 2. Read Logs from Previous Crashed Container (`--previous`)
 
 ```bash
-# Stream live kubelet system agent logs on worker node
-journalctl -u kubelet -f --no-pager
-
-# Stream containerd container runtime system logs
-journalctl -u containerd -f --no-pager
-
-# Direct log files on node filesystem
-tail -f /var/log/pods/production_web-app-*/web/0.log
+kubectl logs pod/web-app-74b89-x8q2z -c web -n production --previous --tail=50
+```
+#### Expected Terminal Output:
+```text
+2026-09-12T13:00:15.102Z [INFO] Initializing server database connection...
+2026-09-12T13:00:16.411Z [FATAL] panic: runtime error: invalid memory address or nil pointer dereference
+goroutine 1 [running]:
+main.main()
+        /app/cmd/server/main.go:42 +0x1b4
 ```
 
 ---
 
-## Category 13: Distributed Tracing & Observability Reference
+## Category 13: Distributed Tracing & Observability Verification
 
-### 1. Inspecting W3C Trace Context Headers (`traceparent`) in HTTP Logs
+### 1. Tailing W3C Trace Context Headers (`traceparent`)
+
 ```bash
-# Stream HTTP logs and filter for W3C traceparent headers (Format: 00-TRACE_ID-SPAN_ID-FLAGS)
 kubectl logs -f deployment/web-app -n production | grep -E "traceparent|trace_id"
 ```
-* **Header Format**: `traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01`
-  * `4bf92f3577b34da6a3ce929d0e0e4736`: 128-bit global Trace ID.
-  * `00f067aa0ba902b7`: 64-bit Parent Span ID.
-
-### 2. Inspecting Service Mesh / Envoy Tracing Sidecars & Port Forwarding
-```bash
-# Query live Envoy sidecar proxy tracing statistics inside pod
-kubectl exec -n production pod/web-app-74b89-x8q2z -c istio-proxy -- curl -s localhost:15000/stats | grep -E "tracing|zipkin|jaeger"
-
-# Port-forward to Jaeger UI in tracing namespace
-kubectl port-forward svc/jaeger-query 16686:16686 -n tracing
+#### Expected Terminal Output:
+```text
+{"time":"2026-09-12T13:10:00Z","level":"INFO","msg":"HTTP GET /api/v1/orders","traceparent":"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}
 ```
 
 ---
 
-## Category 14: Deep Diagnostic, Ephemeral Debugging, Node Maintenance & RBAC Security
+## Category 14: Ephemeral Container Debugging, Node Maintenance & Security Audit
 
-### 1. Inject Ephemeral Debug Containers & Node Debugging
+### 1. Ephemeral Container Injection (`kubectl debug`)
+
 ```bash
-# Inject netshoot diagnostic tools into running Distroless pod
-kubectl debug -it pod/web-app-74b89-x8q2z -n production --image=nicolaka/netshoot --target=web -- /bin/bash
-
-# SSH-less root node debugging
-kubectl debug node/worker-node-01 -it --image=busybox -- chroot /host
-
-# Live Wireshark packet capture streaming
-kubectl exec -n production pod/web-app-74b89-x8q2z -c web -- tcpdump -i any -w - port 80 | wireshark -k -i -
+kubectl debug -it pod/web-app-74b89-x8q2z -n production \
+    --image=nicolaka/netshoot \
+    --target=web \
+    -- /bin/bash
+```
+#### Expected Terminal Output:
+```text
+Targeting container "web". If you don't see a command prompt, try pressing enter.
+bash-5.2# tcpdump -i any port 80 -c 2
+tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
+listening on any, link-type LINUX_SLL2 (Linux cooked v2), snapshot length 262144 bytes
+13:15:00.102938 IP 10.244.1.1.52180 > 10.244.1.15.80: Flags [S], seq 10293847, win 64240
 ```
 
-### 2. Node Maintenance & Taints
-```bash
-# Cordon and drain node safely
-kubectl cordon worker-node-01
-kubectl drain worker-node-01 --ignore-daemonsets --delete-emptydir-data --force --grace-period=60
-kubectl uncordon worker-node-01
+---
 
-# Add/remove node taints
-kubectl taint nodes worker-node-01 dedicated=gpu:NoSchedule
-kubectl taint nodes worker-node-01 dedicated=gpu:NoSchedule-
-```
+### 2. Test RBAC Permissions (`kubectl auth can-i`)
 
-### 3. RBAC Impersonation & Raw API Server Introspection
 ```bash
-# Test permissions via ServiceAccount impersonation
 kubectl auth can-i delete secrets -n production --as=system:serviceaccount:production:app-runner-sa
-
-# Query raw API server metrics and health endpoints
-kubectl get --raw /metrics | grep apiserver_request_duration_seconds
-kubectl get --raw /healthz
-kubectl get --raw /livez?verbose
-kubectl get --raw /readyz?verbose
-kubectl get --raw /openapi/v3
 ```
+#### Expected Verification Output:
+```text
+yes
+```
+*(If unauthorized: returns `no`)*
 
 ---
 
