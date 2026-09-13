@@ -1,6 +1,6 @@
-# Compute Engine: Machine Selection, Security, Storage & Provisioning Decision Trees
+# Compute Engine: Machine Selection, Security, Storage & Operational Decision Trees
 
-This document provides decision logic trees, architectural family breakdowns, custom machine type constraint rules, security/isolation model guidance, and block storage/encryption selection matrices for Compute Engine.
+This document provides decision logic trees, architectural family breakdowns, custom machine type constraint rules, security/isolation model guidance, storage matrices, operational migration/snapshot workflows, and stateful application server deployment blueprints for Compute Engine.
 
 ---
 
@@ -126,18 +126,54 @@ Compute Engine separates compute from storage using **network-attached block per
 | **CMEK** (Customer-Managed) | Customer in Cloud KMS | Cloud Key Management Service | Pass `--kms-key=PROJECT_KMS_KEY_PATH` during disk/VM creation. |
 | **CSEK** (Customer-Supplied) | Customer On-Premises | Customer raw 256-bit AES file | Pass `--csek-key-file=PATH_TO_KEY` per API request; Google never persists key. |
 
-### C. Attachment Limits & Bandwidth Contention Rules
+---
 
-1. **Max Disk Attachment Limits**:
-   - **Shared-Core VMs** (`e2-micro`, `e2-small`, `e2-medium`): Up to **16 persistent disks**.
-   - **Standard, High-Memory, Compute, Memory, Accelerator VMs**: Up to **128 persistent disks**.
-2. **Network Egress vs. Disk I/O Bandwidth Contention**:
-   - Compute Engine allocates network egress bandwidth proportionally to vCPU count.
-   - **Critical Nuance**: Disk write/read I/O throughput traffic shares the **same underlying physical vCPU egress bandwidth budget** as network egress traffic. Heavy disk I/O directly competes with network egress bandwidth!
+## 6. Common Operational Workflows, Relocation & Snapshot Decision Trees
+
+### A. Instance Artifact Comparison Matrix (Machine Image vs Snapshot vs Custom Image)
+
+| Artifact Type | Scope & Contents | Storage Backend | Incremental & Compressed | Primary Workload Use Case |
+| :--- | :--- | :--- | :--- | :--- |
+| **Machine Image** | **Complete VM State**: Disks (Boot + Data), Configuration, RAM metadata, RAM state (if suspended). | Cloud Storage | Yes | **Cross-Zone / Cross-Region VM Relocation**, full instance cloning, disaster recovery. |
+| **Persistent Disk Snapshot** | **Individual Disk Data Blocks** (Boot or Data PD). Excludes Local SSDs. | Cloud Storage | **Yes** (Automated & Compressed) | Periodic backup, data migration across zones, **upgrading disk performance (HDD -> SSD)**. |
+| **Custom OS Image** | **Bootable OS Disk Image** cleaned of machine-specific keys/identifiers. | Compute Engine Image Registry | No (Flat image file) | Golden template image creation for MIG instance templates (`gcloud compute instance-templates`). |
 
 ---
 
-## 6. Remote Access & SSH Strategy (ASCII Decision Tree)
+## 7. Dedicated Stateful Application Server & Backup Architecture Matrix
+
+### A. Disk Formatting by Device ID & Mount Options
+
+| Mounting Requirement | Format / Mount Command | Purpose & Technical Impact |
+| :--- | :--- | :--- |
+| **Deterministic Device Identification** | `/dev/disk/by-id/google-<DISK_NAME>` | Prevents device node drift (e.g. `/dev/sdb` vs `/dev/sdc`) across VM reboots. |
+| **Ext4 Format Optimization** | `mkfs.ext4 -F -E lazy_itable_init=0,lazy_journal_init=0,discard` | Bypasses background inode initialization for immediate full SSD performance. |
+| **Mount Options** | `mount -o discard,defaults` | Enables TRIM / DISCARD commands to optimize SSD block space reclamation. |
+
+### B. Headless Process Persistence Strategy (`screen` vs `systemd` vs `tmux`)
+
+| Tool / Technology | Session Persistence Mode | Detach / Reattach Command | Primary Use Case |
+| :--- | :--- | :--- | :--- |
+| **`screen`** | Virtual terminal session running in background | Detach: `Ctrl+A, Ctrl+D`<br/>Reattach: `screen -r <NAME>` | Quick interactive game/app server sessions decoupled from SSH. |
+| **`systemd`** | Native OS service daemon managed by init system | `systemctl start/stop <SERVICE>` | Production daemon auto-start on OS boot. |
+| **`tmux`** | Terminal multiplexer with multi-pane support | Detach: `Ctrl+B, D`<br/>Reattach: `tmux attach -t <NAME>` | Advanced multi-pane terminal session persistence. |
+
+### C. Automated Cloud Storage Backup Pattern
+
+```
+[ Active Server Process ] ──► [ 1. Freeze Write IO ] ──► [ 2. Sync to Cloud Storage ] ──► [ 3. Resume Write IO ]
+(Running inside screen)       screen -r -X stuff          gcloud storage cp -R          screen -r -X stuff
+                              '/save-all\n/save-off\n'    /home/minecraft/world gs://   '/save-on\n'
+                                                          <BUCKET>/<TIMESTAMP>-world
+                                                                  │
+                                                                  ▼
+                                                      [ Scheduled via crontab ]
+                                                      0 */4 * * * /path/backup.sh
+```
+
+---
+
+## 8. Remote Access & SSH Strategy (ASCII Decision Tree)
 
 ```
 ================================================================================
@@ -164,32 +200,25 @@ Compute Engine separates compute from storage using **network-attached block per
 
 ---
 
-## 7. Visual Mermaid Decision Flowcharts
+## 9. Visual Mermaid Decision Flowcharts
 
-### Storage Type & Encryption Selection Flowchart:
+### Stateful Application Server Deployment & Backup Flowchart:
 ```mermaid
 graph TD
-    StorageStart["Select VM Storage Requirements"] --> DataDurability{"Durability & Persistence Required?"}
+    AppStart["Provision Stateful App Server (mc-server)"] --> DiskAttach["Attach Data SSD Disk (pd-ssd 50GB)"]
     
-    DataDurability -->|Persistent Data (Survives Stop)| PDType{"Performance & IOPS Level?"}
-    DataDurability -->|Ephemeral Scratch Space| SpeedCheck{"Speed vs Risk Tolerance?"}
+    DiskAttach --> FormatMount["Format via Device ID Path:<br/>/dev/disk/by-id/google-minecraft-disk<br/>Mount to /home/minecraft with discard option"]
+    FormatMount --> AppInstall["Install Headless JRE & Application Server JAR"]
     
-    PDType -->|Lowest Cost / Batch HDD| StandardPD["pd-standard (Standard HDD)"]
-    PDType -->|Balanced Price/Performance| BalancedPD["pd-balanced (SSD)"]
-    PDType -->|High-Perf DB / Low Latency| SSDPD["pd-ssd (Performance SSD)"]
-    PDType -->|Provisioned IOPS / Mission Critical| ExtremePD["pd-extreme (Provisioned IOPS up to 120k)"]
-    PDType -->|Multi-Zone HA Disaster Recovery| RegionalPD["Regional Persistent Disk (2-Zone Synchronous Sync)"]
+    AppInstall --> RunProcess{"Choose Execution Engine?"}
+    RunProcess -->|Virtual Screen Terminal| ScreenRun["Run inside screen -S mcs<br/>Detach via Ctrl+A, Ctrl+D"]
+    RunProcess -->|System Daemon| SystemdRun["Configure /etc/systemd/system Service"]
     
-    SpeedCheck -->|Ultra High NVMe IOPS| LocalSSD["Local SSD (NVMe 375GB partitions, up to 9TB)"]
-    SpeedCheck -->|Maximum Speed / In-Memory| RAMDisk["RAM Disk (tmpfs in system memory)"]
+    ScreenRun --> BackupConfig["Configure Cloud Storage Backup Script"]
+    SystemdRun --> BackupConfig
     
-    StandardPD --> EncryptChoice{"Encryption Control Level?"}
-    BalancedPD --> EncryptChoice
-    SSDPD --> EncryptChoice
-    ExtremePD --> EncryptChoice
-    RegionalPD --> EncryptChoice
+    BackupConfig --> ScriptStep["Script Steps:<br/>1. Freeze IO: stuff '/save-all\n/save-off\n'<br/>2. gcloud storage cp -R world gs://bucket/timestamp-world<br/>3. Resume IO: stuff '/save-on\n'"]
+    ScriptStep --> CronAutomate["Automate via Crontab:<br/>0 */4 * * * /home/minecraft/backup.sh"]
     
-    EncryptChoice -->|Google Automated| GMEK["GMEK (Default Google-Managed)"]
-    EncryptChoice -->|Cloud KMS Key Control| CMEK["CMEK (--kms-key=KEY_PATH)"]
-    EncryptChoice -->|Raw Customer-Supplied Key| CSEK["CSEK (--csek-key-file=KEY_FILE)"]
+    CronAutomate --> MetadataLife["Automate VM Lifecycle via Metadata:<br/>startup-script-url & shutdown-script-url"]
 ```
