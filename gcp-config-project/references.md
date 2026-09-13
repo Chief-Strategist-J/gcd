@@ -25,3 +25,13 @@ This document provides official reference links, security guides, and API docume
 * [Creating and Managing GCP Projects](https://cloud.google.com/resource-manager/docs/creating-managing-projects)
 * [Working with Quotas & Quota Increases](https://cloud.google.com/docs/quota)
 * [Billing Account Association API](https://cloud.google.com/billing/docs/how-to/modify-project)
+
+### 5. Google Cloud Storage (GCS)
+* [Google Cloud Storage Documentation](https://cloud.google.com/storage/docs)
+* [Cloud Storage Classes & Autoclass](https://cloud.google.com/storage/docs/storage-classes)
+* [Soft Delete Data Protection](https://cloud.google.com/storage/docs/soft-delete)
+* [Object Versioning & Restoration](https://cloud.google.com/storage/docs/object-versioning)
+* [Object Retention Lock (WORM)](https://cloud.google.com/storage/docs/bucket-lock)
+* [Signed URLs & Policy Documents](https://cloud.google.com/storage/docs/access-control/signed-urls)
+* [Storage Transfer Service & Transfer Appliance](https://cloud.google.com/storage-transfer/docs)
+

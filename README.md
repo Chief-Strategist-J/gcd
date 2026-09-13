@@ -50,6 +50,20 @@ gcd/
 │   ├── shell-commands.md             # In-Depth CLI Manual & Error Matrix (`gcloud compute networks/subnets`)
 │   └── references.md                 # Official VPC Documentation Links & RFC Standards
 │
+├── cloud-sql/                        # Feature 7: Cloud SQL & Relational Databases
+│   ├── README.md                     # Cloud SQL Feature Index
+│   ├── hld-lld-design.md             # Regional HA Failover & Auth Proxy Architecture
+│   ├── decision-tree.md              # Database Selection & Connection Strategy Decision Trees
+│   ├── shell-commands.md             # In-Depth CLI Manual & Error Matrix (`gcloud sql`)
+│   └── references.md                 # Official Cloud SQL Documentation Links & Best Practices
+│
+├── firestore/                        # Feature 8: Google Cloud Firestore (NoSQL Document DB)
+│   ├── README.md                     # Firestore Feature Index
+│   ├── hld-lld-design.md             # Multi-Region Replication & Live Sync Architecture
+│   ├── decision-tree.md              # Database & Operating Mode Selection Trees
+│   ├── shell-commands.md             # In-Depth CLI Manual & Error Matrix (`gcloud firestore`)
+│   └── references.md                 # Official Firestore Documentation Links & Best Practices
+│
 └── README.md                         # Master Workspace Index (This File)
 ```
 
@@ -102,3 +116,21 @@ gcd/
 * **[ASCII & Visual Decision Trees (`vpc-network/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/vpc-network/decision-tree.md)**
 * **[Shell Command Reference & Verification Manual (`vpc-network/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/vpc-network/shell-commands.md)**
 * **[Official References & Links (`vpc-network/references.md`)](file:///home/btpl-lap-22/live/gcd/vpc-network/references.md)**
+
+---
+
+### Feature 7: Cloud SQL & Relational Databases (`/cloud-sql/`)
+* **[HLD & LLD Design (`cloud-sql/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/cloud-sql/hld-lld-design.md)**
+* **[ASCII & Visual Decision Trees (`cloud-sql/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/cloud-sql/decision-tree.md)**
+* **[Shell Command Reference & Verification Manual (`cloud-sql/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/cloud-sql/shell-commands.md)**
+* **[Official References & Links (`cloud-sql/references.md`)](file:///home/btpl-lap-22/live/gcd/cloud-sql/references.md)**
+
+---
+
+### Feature 8: Google Cloud Firestore (`/firestore/`)
+* **[HLD & LLD Design (`firestore/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/firestore/hld-lld-design.md)**
+* **[ASCII & Visual Decision Trees (`firestore/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/firestore/decision-tree.md)**
+* **[Shell Command Reference & Verification Manual (`firestore/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/firestore/shell-commands.md)**
+* **[Official References & Links (`firestore/references.md`)](file:///home/btpl-lap-22/live/gcd/firestore/references.md)**
+
+

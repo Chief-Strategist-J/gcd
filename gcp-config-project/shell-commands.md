@@ -678,18 +678,39 @@ gcloud projects add-iam-policy-binding gcd-prod-analytics-8812 \
     --role="roles/storage.objectViewer"
 ```
 
-#### Step 2: Prepare Storage Bucket & Sample File
+#### Step 2: Prepare Storage Bucket & Advanced Cloud Storage Operations (Generalized Reference)
+
+For the complete 10-category generalized reference manual (including `.boto` CSEK key rotation, `gsutil rewrite -k`, `roles/storage.legacyObjectReader` for `allUsers`, 31-day Delete lifecycle, object versioning generation recovery, and recursive `rsync`), see [cloud-storage/shell-commands.md](file:///home/btpl-lap-22/live/gcd/cloud-storage/shell-commands.md).
+
 ```bash
-# 1. Create Cloud Storage Bucket
-gcloud storage buckets create gs://gcd-lab-bucket-9901 \
-    --project=gcd-prod-analytics-8812 \
-    --location=US
+# 1. Create Fine-Grained Storage Bucket in Target Region
+export PROJECT_ID=$(gcloud config get-value project)
+export BUCKET_NAME="YOUR_GLOBALLY_UNIQUE_BUCKET_NAME"
 
-# 2. Upload Sample File & Rename
-gcloud storage cp sample.txt gs://gcd-lab-bucket-9901/sample.txt
+gcloud storage buckets create gs://${BUCKET_NAME} \
+    --project=${PROJECT_ID} \
+    --location=LOCATION \
+    --default-storage-class=STANDARD \
+    --no-public-access-prevention
 
-# 3. Verify Bucket File Listing (As Storage Object Viewer)
-gcloud storage ls gs://gcd-lab-bucket-9901
+# 2. Upload Object & Make Publicly Readable via Legacy Object Reader Role
+gcloud storage cp /path/to/local_file.ext gs://${BUCKET_NAME}/path/to/object.ext
+gcloud storage objects add-iam-policy-binding gs://${BUCKET_NAME}/path/to/object.ext \
+    --member="allUsers" \
+    --role="roles/storage.legacyObjectReader"
+
+# 3. Configure CSEK Encryption via ~/.boto & Rotate Keys via gsutil rewrite -k
+export CSEK_KEY_1=$(python3 -c 'import base64; import os; print(base64.encodebytes(os.urandom(32)).decode().strip())')
+sed -i "s/#\? \?encryption_key=.*/encryption_key=${CSEK_KEY_1}/" ~/.boto
+gsutil cp /path/to/local_file.ext gs://${BUCKET_NAME}/path/to/object.ext
+gsutil rewrite -k gs://${BUCKET_NAME}/path/to/object.ext
+
+# 4. Set Lifecycle Delete Policy & Enable Object Versioning
+gcloud storage buckets update gs://${BUCKET_NAME} --lifecycle-file=lifecycle.json
+gcloud storage buckets update gs://${BUCKET_NAME} --versioning
+
+# 5. Perform Recursive Directory Synchronization
+gcloud storage rsync /path/to/local_directory gs://${BUCKET_NAME}/remote_prefix --recursive
 ```
 
 #### Step 3: Provision Service Account & Assign Service Account User Role
