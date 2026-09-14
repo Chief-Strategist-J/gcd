@@ -1606,28 +1606,6 @@ gcloud compute instances create private-app-server-01 \
 
 ---
 
-
-#### Expected Terminal Output:
-```text
-Operation "operations/acf.123456789" finished successfully.
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/networks/gcd-prod-custom-vpc].
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/subnetworks/prod-subnet-us-central1].
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/subnetworks/prod-dualstack-subnet].
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/addresses/gcd-nat-static-ip-uscentral1].
-Creating firewall rule...done.
-Creating firewall rule...done.
-Creating firewall rule...done.
-Creating firewall rule...done.
-Creating firewall rule...done.
-Creating firewall rule...done.
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/routers/gcd-nat-router-uscentral1].
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/routers/gcd-nat-router-uscentral1/nats/gcd-nat-gateway-uscentral1].
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/routes/gcd-prod-custom-vpc-route-to-nva].
-Created [https://dns.googleapis.com/dns/v1/projects/YOUR_PROJECT/managedZones/gcd-private-dns-zone].
-Created [https://dns.googleapis.com/dns/v1/projects/YOUR_PROJECT/managedZones/gcd-private-dns-zone/rrsets/db.gcd.internal./A].
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/zones/us-central1-a/instances/private-app-server-01].
-```
-
 #### How to Verify Environment Correctness:
 ```bash
 # Verify Subnet Status
