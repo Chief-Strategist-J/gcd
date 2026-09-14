@@ -1212,13 +1212,17 @@ gcloud compute networks create gcd-prod-custom-vpc \
     --mtu=1460
 
 # Step 3: Provision Regional Subnets (Primary IPv4, GKE Secondary Ranges, Dual-Stack IPv6 & Proxy-Only Subnet)
-# Subnet 3.1: Primary Workload Subnet with GKE Pod/Service Secondary CIDRs
+# Subnet 3.1: Primary Workload Subnet with GKE Pod/Service Secondary CIDRs & VPC Flow Logs
 gcloud compute networks subnets create prod-subnet-us-central1 \
     --network=gcd-prod-custom-vpc \
     --region=us-central1 \
     --range=10.1.0.0/24 \
     --enable-private-ip-google-access \
-    --secondary-range=pod-range=10.100.0.0/16,service-range=10.200.0.0/20
+    --secondary-range=pod-range=10.100.0.0/16,service-range=10.200.0.0/20 \
+    --enable-flow-logs \
+    --logging-aggregation-interval=INTERVAL_5_SEC \
+    --logging-flow-sampling=0.5 \
+    --logging-metadata=INCLUDE_ALL_METADATA
 
 # Subnet 3.2: Dual-Stack IPv4/IPv6 Subnet
 gcloud compute networks subnets create prod-dualstack-subnet \
