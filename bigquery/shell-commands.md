@@ -3,9 +3,7 @@
 This document is an operational reference manual for the BigQuery CLI tool (`bq`).
 
 Every section provides:
-1. **Command to Execute**
-2. **Expected Terminal Output (What to read & look for in terminal)**
-3. **How to Verify Configuration Correctness & Expected Verification Output**
+1. **Command to Execute**3. **How to Verify Configuration Correctness & Expected Verification Output**
 
 ---
 
@@ -29,11 +27,6 @@ bq --location=US mk \
     --default_table_expiration 3600 \
     --description "Production Analytics Dataset" \
     YOUR_PROJECT_ID:prod_analytics
-```
-
-#### Expected Terminal Output:
-```text
-Dataset 'YOUR_PROJECT_ID:prod_analytics' successfully created.
 ```
 
 #### How to Verify Configuration Correctness:
@@ -66,11 +59,6 @@ bq mk \
     --require_partition_filter=true \
     YOUR_PROJECT_ID:prod_analytics.user_transactions \
     id:STRING,user_id:STRING,region:STRING,amount:NUMERIC,transaction_date:DATE
-```
-
-#### Expected Terminal Output:
-```text
-Table 'YOUR_PROJECT_ID:prod_analytics.user_transactions' successfully created.
 ```
 
 #### How to Verify Configuration Correctness:
@@ -106,11 +94,6 @@ bq load \
     "gs://my-prod-data-bucket/parquet/year=2026/*.parquet"
 ```
 
-#### Expected Terminal Output:
-```text
-Waiting on bqjob_r7a892b1_0000018f921... (3s) Current status: DONE
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 bq query --use_legacy_sql=false 'SELECT COUNT(*) AS total_rows FROM `prod_analytics.user_transactions` WHERE transaction_date = "2026-09-12"'
@@ -136,11 +119,6 @@ bq query \
     --use_legacy_sql=false \
     --dry_run \
     'SELECT region, SUM(amount) AS total FROM `prod_analytics.user_transactions` WHERE transaction_date = "2026-09-12" GROUP BY region'
-```
-
-#### Expected Terminal Output:
-```text
-Query successfully validated. It will process 4521098 bytes when run.
 ```
 
 #### How to Verify Configuration Correctness:
@@ -170,11 +148,6 @@ bq extract \
     --compression=GZIP \
     YOUR_PROJECT_ID:prod_analytics.daily_regional_summary \
     "gs://my-prod-data-bucket/exports/summary-*.csv.gz"
-```
-
-#### Expected Terminal Output:
-```text
-Waiting on bqjob_r81f9a_0000018f930... (4s) Current status: DONE
 ```
 
 #### How to Verify Configuration Correctness:

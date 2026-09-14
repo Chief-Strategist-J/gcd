@@ -495,12 +495,6 @@ kubectl create deployment web-app --image=nginx:alpine --replicas=2
 # Verify Pod IP addresses belong to VPC Secondary Range (10.100.x.x)
 kubectl get pods -o wide
 ```
-*Expected Terminal Output:*
-```text
-NAME                       READY   STATUS    RESTARTS   AGE   IP            NODE
-web-app-74b89-x8q2z        1/1     Running   0          45s   10.100.1.15   gke-gke-prod-cluster-node-a1
-web-app-74b89-m4k91        1/1     Running   0          45s   10.100.2.20   gke-gke-prod-cluster-node-a2
-```
 
 ---
 

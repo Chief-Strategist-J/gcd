@@ -1,9 +1,7 @@
 # Kubernetes & Container Lifecycle: Complete Command, Verification & Operations Manual
 
 This document is an exhaustive, production-grade manual for **Kubernetes (`kubectl`) and Container Lifecycle Operations**. Each section provides:
-1. **Command to Execute**
-2. **Expected Terminal Output (What to read & look for)**
-3. **Verification & Correctness Check (How to confirm if your configuration is correct or broken)**
+1. **Command to Execute**3. **Verification & Correctness Check (How to confirm if your configuration is correct or broken)**
 
 ---
 
@@ -37,21 +35,6 @@ DOCKER_BUILDKIT=1 docker build \
     --build-arg APP_VERSION=2.4.0 \
     -t us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0 \
     -f ./Dockerfile .
-```
-
-#### Expected Terminal Output:
-```text
-[+] Building 14.2s (12/12) FINISHED
- => [internal] load build definition from Dockerfile                              0.0s
- => [internal] load .dockerignore                                                0.0s
- => [builder 1/4] FROM golang:1.22-alpine                                       2.1s
- => [production-stage 1/2] FROM alpine:3.19                                      1.2s
- => [builder 2/4] COPY go.mod go.sum ./                                         0.1s
- => [builder 3/4] RUN go mod download                                            4.5s
- => [builder 4/4] RUN CGO_ENABLED=0 go build -o /app/server ./cmd/server         5.1s
- => [production-stage 2/2] COPY --from=builder /app/server /app/server           0.2s
- => exporting to image                                                           0.8s
- => => naming to us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0  0.0s
 ```
 
 #### How to Verify Configuration Correctness:
@@ -102,11 +85,6 @@ docker run -d \
     us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0
 ```
 
-#### Expected Terminal Output:
-```text
-e9182390f7192837198237192837192837192837192837192837192837192837
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 docker ps --filter "name=web-app-container" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
@@ -130,14 +108,6 @@ gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
 # Step 2: Push container image to GCP Artifact Registry
 docker push us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0
-```
-
-#### Expected Terminal Output:
-```text
-The push refers to repository [us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app]
-5f70bf18a086: Pushed
-c4f82d19b7a0: Pushed
-v2.4.0: digest: sha256:a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef0 size: 739
 ```
 
 #### How to Verify Configuration Correctness:
@@ -166,13 +136,6 @@ docker buildx build \
     -f ./Dockerfile .
 ```
 
-#### Expected Terminal Output:
-```text
-[+] Building 22.4s (20/20) FINISHED
- => => pushing layers
- => => pushing manifest for us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0
-```
-
 #### How to Verify Multi-Arch Manifest:
 ```bash
 docker buildx imagetools inspect us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0
@@ -195,14 +158,6 @@ Manifests:
 
 ```bash
 kubectl top pods -n production --sort-by=memory
-```
-
-#### Expected Terminal Output:
-```text
-NAME                      CPU(cores)   MEMORY(bytes)   
-web-app-74b89-x8q2z       15m          142Mi           
-web-app-74b89-m4k91       12m          138Mi           
-web-app-74b89-p2n77       10m          135Mi           
 ```
 
 #### How to Verify Memory Configuration Correctness:
@@ -249,11 +204,6 @@ docker rm -f web-container
 # 1. START / DEPLOY
 kubectl apply -f ./deployment.yaml -n production
 ```
-#### Expected Terminal Output:
-```text
-deployment.apps/web-app created
-service/web-app-service created
-```
 
 #### How to Verify Deployment Correctness:
 ```bash
@@ -272,10 +222,6 @@ web-app   3/3     3            3           25s
 # 2. STOP / PAUSE (Scale to 0)
 kubectl scale deployment/web-app --replicas=0 -n production
 ```
-#### Expected Terminal Output:
-```text
-deployment.apps/web-app scaled
-```
 #### How to Verify:
 ```bash
 kubectl get deployment web-app -n production
@@ -287,10 +233,6 @@ kubectl get deployment web-app -n production
 ```bash
 # 3. RESTART (Zero-Downtime Rolling Restart)
 kubectl rollout restart deployment/web-app -n production
-```
-#### Expected Terminal Output:
-```text
-deployment.apps/web-app restarted
 ```
 #### How to Verify Restart Status:
 ```bash
@@ -309,10 +251,6 @@ deployment "web-app" successfully rolled out
 # 4. DESTROY DEPLOYMENT
 kubectl delete deployment web-app -n production
 ```
-#### Expected Terminal Output:
-```text
-deployment.apps "web-app" deleted
-```
 
 ---
 
@@ -321,10 +259,6 @@ deployment.apps "web-app" deleted
 ```bash
 # 1. CORDON (Stop scheduling new pods)
 kubectl cordon worker-node-01
-```
-#### Expected Terminal Output:
-```text
-node/worker-node-01 cordoned
 ```
 #### How to Verify Node Correctness:
 ```bash
@@ -341,14 +275,6 @@ worker-node-01   Ready,SchedulingDisabled   <none>   45d   v1.36.2
 ```bash
 # 2. DRAIN (Evict running pods safely)
 kubectl drain worker-node-01 --ignore-daemonsets --delete-emptydir-data --force --grace-period=60
-```
-#### Expected Terminal Output:
-```text
-evicting pod production/web-app-74b89-x8q2z
-evicting pod production/web-app-74b89-m4k91
-pod/web-app-74b89-x8q2z evicted
-pod/web-app-74b89-m4k91 evicted
-node/worker-node-01 drained
 ```
 
 ---
@@ -367,10 +293,6 @@ kubectl uncordon worker-node-01
 # Switch active context to production
 kubectl config use-context prod-gke-us-central1
 ```
-#### Expected Terminal Output:
-```text
-Switched to context "prod-gke-us-central1".
-```
 
 #### How to Verify Active Context Correctness:
 ```bash
@@ -387,10 +309,6 @@ kubectl config current-context
 ```bash
 # Validate YAML syntax and server API schema without persisting change
 kubectl apply -f ./deployment.yaml --dry-run=server
-```
-#### Expected Terminal Output (Valid Config):
-```text
-deployment.apps/web-app configured (server dry run)
 ```
 #### Expected Output (Invalid Config / Broken Schema):
 ```text
@@ -455,11 +373,6 @@ kubectl create ingress web-ingress \
     --dry-run=client -o yaml > ingress.yaml
 ```
 
-#### Expected Terminal Output:
-```text
-apiVersions, metadata, and spec definitions emitted cleanly to YAML files.
-```
-
 #### How to Verify Generated Specs:
 ```bash
 kubectl apply -f ./deployment.yaml --dry-run=server
@@ -479,10 +392,6 @@ deployment.apps/web-api created (server dry run)
 ```bash
 kubectl get secret db-credentials -n production -o jsonpath='{.data.password}' | base64 --decode; echo
 ```
-#### Expected Terminal Output:
-```text
-SuperSecretPass123!
-```
 
 ---
 
@@ -490,12 +399,6 @@ SuperSecretPass123!
 
 ```bash
 kubectl get pods -n production -o jsonpath='{range .items[*]}{.metadata.name}{"\tRestarts: "}{.status.containerStatuses[0].restartCount}{"\n"}{end}'
-```
-#### Expected Terminal Output:
-```text
-web-app-74b89-x8q2z     Restarts: 0
-web-app-74b89-m4k91     Restarts: 2
-web-app-74b89-p2n77     Restarts: 0
 ```
 
 ---
@@ -506,10 +409,6 @@ web-app-74b89-p2n77     Restarts: 0
 
 ```bash
 kubectl set image deployment/web-app web=nginx:1.26-alpine -n production --record
-```
-#### Expected Terminal Output:
-```text
-deployment.apps/web-app image updated
 ```
 
 #### How to Verify Rolling Update Correctness:
@@ -531,10 +430,6 @@ deployment "web-app" successfully rolled out
 ```bash
 kubectl rollout undo deployment/web-app -n production
 ```
-#### Expected Terminal Output:
-```text
-deployment.apps/web-app rolled back
-```
 
 ---
 
@@ -546,10 +441,6 @@ deployment.apps/web-app rolled back
 kubectl create secret generic app-secrets \
     --from-literal=DB_PASS='Secret123!' \
     -n production
-```
-#### Expected Terminal Output:
-```text
-secret/app-secrets created
 ```
 
 #### How to Verify Secret Creation & Decrypt All Keys:
@@ -570,11 +461,6 @@ kubectl get secret app-secrets -n production -o json | jq '.data | map_values(@b
 ```bash
 kubectl get pvc -n production
 ```
-#### Expected Terminal Output:
-```text
-NAME             STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-db-data-pvc      Bound    pvc-8921a4f0-901b-4c22-b91c-1a2b3c4d5e6f   100Gi      RWO            pd-ssd         5d
-```
 * **What to Read**: `STATUS` MUST read `Bound`. If `Pending`, storage provisioner failed.
 
 ---
@@ -585,10 +471,6 @@ db-data-pvc      Bound    pvc-8921a4f0-901b-4c22-b91c-1a2b3c4d5e6f   100Gi      
 
 ```bash
 kubectl expose deployment web-app --type=LoadBalancer --port=80 --target-port=8080 --name=web-service -n production
-```
-#### Expected Terminal Output:
-```text
-service/web-service exposed
 ```
 
 #### How to Verify Service & External IP Assignment:
@@ -653,10 +535,6 @@ kubectl patch deployment web-app -n production --type='strategic' -p '
   }
 }'
 ```
-#### Expected Terminal Output:
-```text
-deployment.apps/web-app patched
-```
 
 ---
 
@@ -676,14 +554,6 @@ kubectl logs pod/web-app-74b89-x8q2z -n production 1> stdout.log 2> stderr.log
 ```bash
 kubectl logs pod/web-app-74b89-x8q2z -c web -n production --previous --tail=50
 ```
-#### Expected Terminal Output:
-```text
-2026-09-12T13:00:15.102Z [INFO] Initializing server database connection...
-2026-09-12T13:00:16.411Z [FATAL] panic: runtime error: invalid memory address or nil pointer dereference
-goroutine 1 [running]:
-main.main()
-        /app/cmd/server/main.go:42 +0x1b4
-```
 
 ---
 
@@ -693,10 +563,6 @@ main.main()
 
 ```bash
 kubectl logs -f deployment/web-app -n production | grep -E "traceparent|trace_id"
-```
-#### Expected Terminal Output:
-```text
-{"time":"2026-09-12T13:10:00Z","level":"INFO","msg":"HTTP GET /api/v1/orders","traceparent":"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}
 ```
 
 ---
@@ -710,14 +576,6 @@ kubectl debug -it pod/web-app-74b89-x8q2z -n production \
     --image=nicolaka/netshoot \
     --target=web \
     -- /bin/bash
-```
-#### Expected Terminal Output:
-```text
-Targeting container "web". If you don't see a command prompt, try pressing enter.
-bash-5.2# tcpdump -i any port 80 -c 2
-tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
-listening on any, link-type LINUX_SLL2 (Linux cooked v2), snapshot length 262144 bytes
-13:15:00.102938 IP 10.244.1.1.52180 > 10.244.1.15.80: Flags [S], seq 10293847, win 64240
 ```
 
 ---

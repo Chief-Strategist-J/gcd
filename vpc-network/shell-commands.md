@@ -3,9 +3,7 @@
 This document is an operational reference manual for Google Cloud Virtual Private Cloud (VPC) Networks, Subnets, Firewall Rules, IP Address Management, Bring Your Own IP (BYOIP), Virtual Routers, and Cloud DNS.
 
 Every command snippet includes:
-1. **Command to Execute**
-2. **Expected Terminal Output (What to read & look for in terminal)**
-3. **How to Verify Configuration Correctness & Expected Verification Output**
+1. **Command to Execute**3. **How to Verify Configuration Correctness & Expected Verification Output**
 
 ---
 
@@ -39,13 +37,6 @@ gcloud compute networks create gcd-prod-custom-vpc \
     --mtu=1460
 ```
 
-#### Expected Terminal Output:
-```text
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/networks/gcd-prod-custom-vpc].
-NAME                SUBNET_MODE  BGP_ROUTING_MODE  IPV4_RANGE  GATEWAY_IPV4
-gcd-prod-custom-vpc  CUSTOM       GLOBAL
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute networks describe gcd-prod-custom-vpc --format="yaml(name, autoCreateSubnetworks, routingConfig, mtu)"
@@ -66,11 +57,6 @@ routingConfig:
 
 ```bash
 gcloud compute networks switch-mode gcd-dev-auto-vpc --mode=custom
-```
-
-#### Expected Terminal Output:
-```text
-Switching network to custom mode...done.
 ```
 
 #### How to Verify Configuration Correctness:
@@ -98,14 +84,6 @@ gcloud compute networks delete default --quiet
 gcloud compute instances create test-no-vpc-vm --zone=us-central1-a
 ```
 
-#### Expected Terminal Output:
-```text
-Deleted [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/firewallrules/default-allow-icmp].
-Deleted [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/networks/default].
-ERROR: (gcloud.compute.instances.create) Could not fetch resource:
-- No more networks available in project.
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute networks list
@@ -122,11 +100,6 @@ Listed 0 items.
 
 ```bash
 gcloud services enable iap.googleapis.com networkmanagement.googleapis.com
-```
-
-#### Expected Terminal Output:
-```text
-Operation "operations/acf.123456789" finished successfully.
 ```
 
 #### How to Verify Configuration Correctness:
@@ -147,13 +120,6 @@ networkmanagement.googleapis.com    Network Management API
 
 ```bash
 gcloud compute networks create mynetwork --subnet-mode=auto
-```
-
-#### Expected Terminal Output:
-```text
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/networks/mynetwork].
-NAME       SUBNET_MODE  BGP_ROUTING_MODE  IPV4_RANGE  GATEWAY_IPV4
-mynetwork  AUTO         REGIONAL
 ```
 
 #### How to Verify Configuration Correctness:
@@ -196,15 +162,6 @@ gcloud compute networks subnets create privatesubnet-notus \
     --range=172.20.0.0/20
 ```
 
-#### Expected Terminal Output:
-```text
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/networks/managementnet].
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/networks/privatenet].
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/subnetworks/managementsubnet-us].
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/subnetworks/privatesubnet-us].
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-east1/subnetworks/privatesubnet-notus].
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute networks subnets list --sort-by=NETWORK --format="table(network, name, region, ipCidrRange)"
@@ -234,18 +191,6 @@ gcloud compute ssh mynet-us-vm --zone=us-central1-a --tunnel-through-iap --comma
 gcloud compute ssh mynet-us-vm --zone=us-central1-a --tunnel-through-iap --command="ping -c 3 10.240.0.2"
 ```
 
-#### Expected Terminal Output:
-```text
---- 34.122.10.55 ping statistics ---
-3 packets transmitted, 3 received, 0% packet loss, time 2003ms
-
---- 10.132.0.2 ping statistics ---
-3 packets transmitted, 3 received, 0% packet loss, time 2004ms
-
---- 10.240.0.2 ping statistics ---
-3 packets transmitted, 0 received, 100% packet loss, time 2048ms
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 # Confirm that isolated VPCs require VPC Peering or Cloud VPN for internal IP communication
@@ -269,13 +214,6 @@ gcloud compute networks subnets create prod-subnet-us-central1 \
     --region=us-central1 \
     --range=10.1.0.0/24 \
     --enable-private-ip-google-access
-```
-
-#### Expected Terminal Output:
-```text
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/subnetworks/prod-subnet-us-central1].
-NAME                     REGION       NETWORK              RANGE
-prod-subnet-us-central1  us-central1  gcd-prod-custom-vpc  10.1.0.0/24
 ```
 
 #### How to Verify Configuration Correctness:
@@ -303,11 +241,6 @@ privateIpGoogleAccess: true
 gcloud compute networks subnets expand-ip-range prod-subnet-us-central1 \
     --region=us-central1 \
     --prefix-length=20
-```
-
-#### Expected Terminal Output:
-```text
-Updated [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/subnetworks/prod-subnet-us-central1].
 ```
 
 #### How to Verify Configuration Correctness:
@@ -350,12 +283,6 @@ gcloud compute instances create vm-5 \
     --subnet=demo-small-subnet
 ```
 
-#### Expected Terminal Output (IP Exhaustion Failure):
-```text
-ERROR: (gcloud.compute.instances.create) Could not fetch resource:
-- IP space of subnetwork 'demo-small-subnet' in region 'us-central1' is exhausted.
-```
-
 #### Step 4: Expand Subnet Live from /29 to /23 (Zero VM Downtime for VMs 1-4)
 ```bash
 gcloud compute networks subnets expand-ip-range demo-small-subnet \
@@ -371,13 +298,6 @@ gcloud compute instances create vm-5 \
     --subnet=demo-small-subnet
 ```
 
-#### Expected Terminal Output (Success):
-```text
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/zones/us-central1-a/instances/vm-5].
-NAME  ZONE           MACHINE_TYPE  PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP    STATUS
-vm-5  us-central1-a  e2-micro                   10.10.0.6    34.122.10.55   RUNNING
-```
-
 ---
 
 ## Category 4: Dual-Stack IPv4 & IPv6 Subnet Provisioning
@@ -391,11 +311,6 @@ gcloud compute networks subnets create prod-dualstack-subnet \
     --range=10.2.0.0/24 \
     --stack-type=IPV4_IPV6 \
     --ipv6-access-type=EXTERNAL
-```
-
-#### Expected Terminal Output:
-```text
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/subnetworks/prod-dualstack-subnet].
 ```
 
 ---
@@ -414,11 +329,6 @@ gcloud compute firewall-rules create allow-internal-ssh \
     --target-tags=ssh-enabled
 ```
 
-#### Expected Terminal Output:
-```text
-Creating firewall rule...done.
-```
-
 ---
 
 ### 2. Provision Identity-Aware Proxy (IAP) Ingress Firewall Rule (35.235.240.0/20)
@@ -432,13 +342,6 @@ gcloud compute firewall-rules create allow-iap-ssh \
     --rules=tcp:22 \
     --source-ranges=35.235.240.0/20 \
     --target-tags=iap-gce
-```
-
-#### Expected Terminal Output:
-```text
-Creating firewall rule...done.
-NAME          NETWORK    DIRECTION  PRIORITY  ALLOW   DENY  DISABLED
-allow-iap-ssh mynetwork  INGRESS    1000      tcp:22        False
 ```
 
 #### How to Verify Configuration Correctness:
@@ -472,13 +375,6 @@ gcloud compute firewall-rules create privatenet-allow-icmp-ssh-rdp \
     --action=ALLOW \
     --rules=icmp,tcp:22,tcp:3389 \
     --source-ranges=0.0.0.0/0
-```
-
-#### Expected Terminal Output:
-```text
-Creating firewall rule...done.
-NAME                           NETWORK     DIRECTION  PRIORITY  ALLOW                 DENY  DISABLED
-privatenet-allow-icmp-ssh-rdp  privatenet  INGRESS    1000      icmp,tcp:22,tcp:3389        False
 ```
 
 #### How to Verify Configuration Correctness:
@@ -559,11 +455,6 @@ gcloud compute addresses create promoted-static-ip \
     --addresses=35.202.88.19
 ```
 
-#### Expected Terminal Output:
-```text
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/addresses/promoted-static-ip].
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute addresses describe promoted-static-ip --region=us-central1 --format="yaml(name, address, status)"
@@ -584,13 +475,6 @@ status: IN_USE
 gcloud compute addresses list \
     --filter="status=RESERVED AND users:*" \
     --format="table(name, region, address, status)"
-```
-
-#### Expected Terminal Output:
-```text
-NAME                 REGION       ADDRESS        STATUS
-abandoned-legacy-ip  us-central1  34.122.10.55   RESERVED
-unused-test-ip       us-central1  35.202.99.11   RESERVED
 ```
 
 #### How to Verify Configuration Correctness & Release Unassigned IPs:
@@ -616,11 +500,6 @@ gcloud compute instances create private-backend-db \
     --no-address
 ```
 
-#### Expected Terminal Output:
-```text
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/zones/us-central1-a/instances/private-backend-db].
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute instances describe private-backend-db --zone=us-central1-a \
@@ -642,11 +521,6 @@ gcloud compute instances create custom-ip-vm \
     --machine-type=e2-micro \
     --subnet=prod-subnet-us-central1 \
     --private-network-ip=10.1.0.25
-```
-
-#### Expected Terminal Output:
-```text
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/zones/us-central1-a/instances/custom-ip-vm].
 ```
 
 #### How to Verify Configuration Correctness:
@@ -672,11 +546,6 @@ gcloud compute public-advertised-prefixes create my-company-byoip-pap \
     --range=198.51.100.0/24
 ```
 
-#### Expected Terminal Output:
-```text
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/publicAdvertisedPrefixes/my-company-byoip-pap].
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute public-advertised-prefixes describe my-company-byoip-pap --format="yaml(name, ipCidrRange, status)"
@@ -697,11 +566,6 @@ status: INITIAL
 gcloud compute ssh vm-1 --zone=us-central1-a --command="dig +short vm-2.us-central1-a.c.YOUR_PROJECT.internal"
 ```
 
-#### Expected Terminal Output:
-```text
-10.10.0.3
-```
-
 ---
 
 ## Category 8: Alias IP Ranges & OS NAT Transparency Inspection
@@ -711,14 +575,6 @@ gcloud compute ssh vm-1 --zone=us-central1-a --command="dig +short vm-2.us-centr
 ```bash
 # Execute ip addr show inside VM OS
 gcloud compute ssh lifecycle-demo-vm --zone=us-central1-a --command="ip addr show eth0"
-```
-
-#### Expected Terminal Output (Guest OS ONLY Sees Internal IP 10.1.0.2):
-```text
-2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1460 qdisc mq state UP group default qlen 1000
-    link/ether 42:01:0a:01:00:02 brd ff:ff:ff:ff:ff:ff
-    inet 10.1.0.2/32 brd 10.1.0.2 scope global eth0
-       valid_lft forever preferred_lft forever
 ```
 * Note: The external IP `35.202.88.19` does NOT appear on `eth0`. It is mapped transparently via 1:1 NAT at the VPC hypervisor layer.
 
@@ -732,11 +588,6 @@ gcloud compute instances create container-host-vm \
     --machine-type=n2-standard-2 \
     --subnet=prod-subnet-us-central1 \
     --aliases="10.1.0.64/28"
-```
-
-#### Expected Terminal Output:
-```text
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/zones/us-central1-a/instances/container-host-vm].
 ```
 
 #### How to Verify Configuration Correctness:
@@ -764,11 +615,6 @@ gcloud dns managed-zones create company-public-zone \
     --visibility=public
 ```
 
-#### Expected Terminal Output:
-```text
-Created [https://dns.googleapis.com/dns/v1/projects/YOUR_PROJECT/managedZones/company-public-zone].
-```
-
 ---
 
 ### 2. Add DNS A-Record Pointing to VM External IP
@@ -779,11 +625,6 @@ gcloud dns record-sets create "app.example.com." \
     --type=A \
     --ttl=300 \
     --rrdatas="35.202.88.19"
-```
-
-#### Expected Terminal Output:
-```text
-Created [https://dns.googleapis.com/dns/v1/projects/YOUR_PROJECT/managedZones/company-public-zone/rrsets/app.example.com./A].
 ```
 
 ---
@@ -799,11 +640,6 @@ gcloud compute routes create route-to-internal-appliance \
     --next-hop-instance=firewall-appliance-vm \
     --next-hop-instance-zone=us-central1-a \
     --priority=800
-```
-
-#### Expected Terminal Output:
-```text
-Creating route...done.
 ```
 
 #### How to Verify Configuration Correctness:
@@ -834,11 +670,6 @@ gcloud compute firewall-rules create block-database-egress-to-internet \
     --target-service-accounts="sa-database@YOUR_PROJECT.iam.gserviceaccount.com"
 ```
 
-#### Expected Terminal Output:
-```text
-Creating firewall rule...done.
-```
-
 ---
 
 ## Category 12: Private Google Access & Egress Cost Optimization
@@ -851,11 +682,6 @@ When VMs without external IPs connect to Google APIs (Cloud Storage, BigQuery, M
 gcloud compute networks subnets update prod-subnet-us-central1 \
     --region=us-central1 \
     --enable-private-ip-google-access
-```
-
-#### Expected Terminal Output:
-```text
-Updated [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/subnetworks/prod-subnet-us-central1].
 ```
 
 #### How to Verify Configuration Correctness:
@@ -876,13 +702,6 @@ True
 
 ```bash
 gcloud compute instances list --format="table(name, zone, networkInterfaces[0].networkIP, networkInterfaces[0].accessConfigs[0].natIP)"
-```
-
-#### Expected Terminal Output:
-```text
-NAME               ZONE          PRIMARY_IP  EXTERNAL_IP
-web-frontend-vm-1  us-central1-a 10.1.0.2    35.202.88.19
-backend-api-vm-2   us-central1-a 10.1.0.3    34.122.10.55
 ```
 
 #### How to Verify & Remediate:
@@ -948,14 +767,6 @@ gcloud compute routes create route-to-onprem \
     --network=gcd-prod-custom-vpc \
     --next-hop-vpn-tunnel=classic-tunnel-1 \
     --next-hop-vpn-tunnel-region=us-central1
-```
-
-#### Expected Terminal Output:
-```text
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/targetVpnGateways/classic-vpn-gw].
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/vpnTunnels/classic-tunnel-1].
-NAME              REGION       GATEWAY         VPN_INTERFACE
-classic-tunnel-1  us-central1  classic-vpn-gw
 ```
 
 #### How to Verify Configuration Correctness:
@@ -1040,13 +851,6 @@ gcloud compute routers add-bgp-peer vpn-cloud-router \
     --peer-ip-address=169.254.1.2 \
     --peer-asn=65002 \
     --region=us-central1
-```
-
-#### Expected Terminal Output:
-```text
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/vpnGateways/ha-vpn-gw-01].
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/externalVpnGateways/onprem-peer-gateway].
-Creating VPN tunnels...done.
 ```
 
 #### How to Verify Configuration Correctness:
@@ -1197,16 +1001,6 @@ gcloud compute vpn-tunnels delete vpc-demo-tunnel0 --region=us-central1 --quiet
 gcloud compute ssh on-prem-instance1 --zone=us-central1-b --command="ping -c 4 10.1.1.2"
 ```
 
-#### Expected Terminal Output:
-```text
-Updated [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/networks/vpc-demo].
-PING 10.1.1.2 (10.1.1.2) 56(84) bytes of data.
-64 bytes from 10.1.1.2: icmp_seq=1 ttl=62 time=2.01 ms
-64 bytes from 10.1.1.2: icmp_seq=2 ttl=62 time=1.71 ms
---- 10.1.1.2 ping statistics ---
-4 packets transmitted, 4 received, 0% packet loss
-```
-
 #### Complete Lab Resource Teardown Master Command:
 ```bash
 gcloud compute vpn-tunnels delete on-prem-tunnel0 --region=us-central1 --quiet && \
@@ -1283,12 +1077,6 @@ gcloud compute routers add-bgp-peer interconnect-router-uscentral1 \
     --region=us-central1
 ```
 
-#### Expected Terminal Output:
-```text
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/interconnects/dedicated-interconnect-01].
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/interconnectAttachments/dedicated-vlan-attachment-01].
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute interconnects attachments describe dedicated-vlan-attachment-01 --region=us-central1 --format="yaml(state, operationalStatus)"
@@ -1316,12 +1104,6 @@ gcloud compute interconnects attachments create partner-vlan-attachment-01 \
 gcloud compute interconnects attachments describe partner-vlan-attachment-01 \
     --region=us-central1 \
     --format="value(pairingKey)"
-```
-
-#### Expected Terminal Output:
-```text
-Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/interconnectAttachments/partner-vlan-attachment-01].
-7b4c9e12-3a5f-4d11-8e99-0a1b2c3d4e5f/us-central1/1
 ```
 
 ---

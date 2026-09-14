@@ -3,9 +3,7 @@
 This document is an exhaustive operational manual for **GCP Core Configuration, Project Lifecycle, Authentication, and Organization Governance**.
 
 Every command snippet includes:
-1. **Command to Execute**
-2. **Expected Terminal Output (What to read & look for in terminal)**
-3. **How to Verify Configuration Correctness & Expected Verification Output**
+1. **Command to Execute**3. **How to Verify Configuration Correctness & Expected Verification Output**
 
 ---
 
@@ -26,17 +24,6 @@ Every command snippet includes:
 
 ```bash
 gcloud auth login --launch-browser
-```
-
-#### Expected Terminal Output:
-```text
-Your browser has been opened to visit:
-
-    https://accounts.google.com/o/oauth2/auth?response_type=code&client_id=32555940559.apps.googleusercontent.com&redirect_uri=http%3A%2F%2Flocalhost%3A8085%2F&scope=openid+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform&state=A98f7d6s87f6s87
-
-You are now logged in as [admin@company.com].
-Your current project is [None]. You can set your project using:
-  $ gcloud config set project PROJECT_ID
 ```
 
 #### How to Verify Configuration Correctness:
@@ -60,13 +47,6 @@ To set the active account, run:
 
 ```bash
 gcloud auth application-default login
-```
-
-#### Expected Terminal Output:
-```text
-Credentials saved to file: [/home/user/.config/gcloud/application_default_credentials.json]
-
-These credentials will be used by any library that requests Application Default Credentials (ADC).
 ```
 
 #### How to Verify Configuration Correctness:
@@ -104,12 +84,6 @@ gcloud projects add-iam-policy-binding prod-core-api-01-9921 \
     --role="roles/storage.objectAdmin"
 ```
 
-#### Expected Terminal Output:
-```text
-Created service account [backend-storage-sa].
-Updated IAM policy for project [prod-core-api-01-9921].
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud iam service-accounts describe backend-storage-sa@prod-core-api-01-9921.iam.gserviceaccount.com
@@ -141,11 +115,6 @@ gcloud compute instances create unauthenticated-vm \
     --no-scopes
 ```
 
-#### Expected Terminal Output:
-```text
-Created [https://www.googleapis.com/compute/v1/projects/prod-core-api-01-9921/zones/us-central1-a/instances/microservice-vm1].
-```
-
 ---
 
 ### 3. Grant Service Account User Role (`roles/iam.serviceAccountUser`)
@@ -157,15 +126,6 @@ To allow a developer or group to deploy VMs running as a specific Service Accoun
 gcloud iam service-accounts add-iam-policy-binding backend-storage-sa@prod-core-api-01-9921.iam.gserviceaccount.com \
     --member="group:developers@company.com" \
     --role="roles/iam.serviceAccountUser"
-```
-
-#### Expected Terminal Output:
-```text
-Updated IAM policy for service account [backend-storage-sa@prod-core-api-01-9921.iam.gserviceaccount.com].
-bindings:
-- members:
-  - group:developers@company.com
-  role: roles/iam.serviceAccountUser
 ```
 
 #### How to Verify Configuration Correctness:
@@ -196,13 +156,6 @@ gcloud iam service-accounts keys delete KEY_ID_HASH \
     --quiet
 ```
 
-#### Expected Terminal Output:
-```text
-created key [a1b2c3d4e5f67890] of type [json] as [./sa-key.json]
-KEY_ID            KEY_TYPE      VALID_AFTER           VALID_BEFORE
-a1b2c3d4e5f67890  USER_MANAGED  2026-09-13T10:00:00Z  2036-09-13T10:00:00Z
-```
-
 ---
 
 ### 5. Service Account Impersonation (Keyless Best Practice)
@@ -218,13 +171,6 @@ gcloud compute instances list \
 # 2. Generate short-lived OAuth2 access token for code SDK testing (Valid for 1 Hour)
 gcloud auth print-access-token \
     --impersonate-service-account=backend-storage-sa@prod-core-api-01-9921.iam.gserviceaccount.com
-```
-
-#### Expected Terminal Output:
-```text
-WARNING: This command is using service account impersonation. All API calls will be executed as [backend-storage-sa@prod-core-api-01-9921.iam.gserviceaccount.com].
-NAME              ZONE           MACHINE_TYPE   STATUS
-microservice-vm1  us-central1-a  e2-medium      RUNNING
 ```
 
 #### How to Verify Configuration Correctness:
@@ -249,15 +195,6 @@ gcloud config configurations create prod-environment
 gcloud config set project prod-core-api-01-9921
 gcloud config set compute/region us-central1
 gcloud config set compute/zone us-central1-a
-```
-
-#### Expected Terminal Output:
-```text
-Created [prod-environment].
-Activated [prod-environment].
-Updated property [core/project].
-Updated property [compute/region].
-Updated property [compute/zone].
 ```
 
 #### How to Verify Configuration Correctness:
@@ -285,13 +222,6 @@ gcloud projects create gcd-prod-analytics-8812 \
     --labels=environment=production,team=analytics
 ```
 
-#### Expected Terminal Output:
-```text
-Create in progress for [https://cloudresourcemanager.googleapis.com/v1/projects/gcd-prod-analytics-8812].
-Waiting for [operations/cp.481920491823] to finish...done.
-Enabling service [cloudapis.googleapis.com] on project [gcd-prod-analytics-8812]...
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud projects describe gcd-prod-analytics-8812 --format="yaml(projectId, name, lifecycleState, parent)"
@@ -314,14 +244,6 @@ projectId: gcd-prod-analytics-8812
 ```bash
 gcloud billing projects link gcd-prod-analytics-8812 \
     --billing-account=01A2B3-4C5D6E-7F8G9H
-```
-
-#### Expected Terminal Output:
-```text
-billingAccountName: billingAccounts/01A2B3-4C5D6E-7F8G9H
-billingEnabled: true
-name: projects/gcd-prod-analytics-8812/billingInfo
-projectId: gcd-prod-analytics-8812
 ```
 
 #### How to Verify Configuration Correctness:
@@ -367,24 +289,6 @@ gcloud projects add-iam-policy-binding gcd-prod-analytics-8812 \
     --role="roles/resourcemanager.organizationViewer"
 ```
 
-#### Expected Terminal Output:
-```text
-Updated IAM policy for project [gcd-prod-analytics-8812].
-bindings:
-- members:
-  - user:engineer@company.com
-  role: roles/viewer
-- members:
-  - serviceAccount:backend-sa@gcd-prod-analytics-8812.iam.gserviceaccount.com
-  role: roles/storage.objectAdmin
-- members:
-  - group:devops-lead-team@company.com
-  role: roles/editor
-- members:
-  - domain:company.com
-  role: roles/browser
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud projects get-iam-policy gcd-prod-analytics-8812 --format="json"
@@ -400,19 +304,6 @@ gcloud projects add-iam-policy-binding gcd-prod-analytics-8812 \
     --member="user:contractor@company.com" \
     --role="roles/compute.admin" \
     --condition='title="Temporary Incident Access",description="Expires end of month",expression="request.time < timestamp(\"2026-12-31T23:59:59Z\")"'
-```
-
-#### Expected Terminal Output:
-```text
-Updated IAM policy for project [gcd-prod-analytics-8812].
-bindings:
-- condition:
-    description: Expires end of month
-    expression: request.time < timestamp("2026-12-31T23:59:59Z")
-    title: Temporary Incident Access
-  members:
-  - user:contractor@company.com
-  role: roles/compute.admin
 ```
 
 #### How to Verify Configuration Correctness:
@@ -446,11 +337,6 @@ gcloud iam deny-policies create deny-service-account-key-creation \
     --deny-rule-file=deny-policy.yaml
 ```
 
-#### Expected Terminal Output:
-```text
-Created deny policy [deny-service-account-key-creation].
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud iam deny-policies describe deny-service-account-key-creation \
@@ -476,12 +362,6 @@ gcloud recommender insights list \
     --insight-type=google.iam.policy.Insight
 ```
 
-#### Expected Terminal Output:
-```text
-NAME                                                                                               DESCRIPTION                                                                 STATE
-projects/123/locations/global/recommenders/google.iam.policy.Recommender/recommendations/rec-1  Replace Editor with Storage Object Viewer for user user:engineer@company.com ACTIVE
-```
-
 ---
 
 ### 5. Organization Policies: Boolean Constraints & Location Restrictions
@@ -491,11 +371,6 @@ projects/123/locations/global/recommenders/google.iam.policy.Recommender/recomme
 gcloud resource-manager org-policies enable-enforce \
     --organization=981273918234 \
     constraints/compute.disableSerialPortAccess
-```
-
-#### Expected Terminal Output:
-```text
-Updated org policy for organization [981273918234].
 ```
 
 #### How to Verify Configuration Correctness:
@@ -524,11 +399,6 @@ gcloud iam service-accounts create prod-app-sa \
     --project=gcd-prod-analytics-8812
 ```
 
-#### Expected Terminal Output:
-```text
-Created service account [prod-app-sa].
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud iam service-accounts describe prod-app-sa@gcd-prod-analytics-8812.iam.gserviceaccount.com
@@ -554,26 +424,6 @@ curl -v -H "X-Goog-Allowed-Resources-Authorized-Organizations: 981273918234" \
 curl -v -H "X-Goog-Allowed-Resources-Authorized-Organizations: 981273918234" \
      -H "Authorization: Bearer $(gcloud auth print-access-token)" \
      "https://storage.googleapis.com/storage/v1/b/unauthorized-personal-external-bucket/o"
-```
-
-#### Expected Terminal Output (Authorized Access):
-```text
-< HTTP/2 200
-{
-  "kind": "storage#objects"
-}
-```
-
-#### Expected Terminal Output (Unauthorized Access Denied by Org Restrictions):
-```text
-< HTTP/2 403 Forbidden
-{
-  "error": {
-    "code": 403,
-    "message": "Request denied by Organization Restrictions policy. Target resource belongs to an unauthorized organization.",
-    "status": "PERMISSION_DENIED"
-  }
-}
 ```
 
 #### How to Verify Configuration Correctness:
@@ -791,11 +641,6 @@ gcloud services enable \
     bigquery.googleapis.com \
     storage.googleapis.com \
     --project=gcd-prod-analytics-8812
-```
-
-#### Expected Terminal Output:
-```text
-Operation "operations/acf.p2-gcd-prod-analytics-8812-78192" finished successfully.
 ```
 
 #### How to Verify Configuration Correctness:

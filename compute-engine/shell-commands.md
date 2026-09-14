@@ -3,9 +3,7 @@
 This document is an exhaustive operational reference for the complete Google Compute Engine (GCE) Virtual Machine lifecycle. 
 
 Every section provides:
-1. **Command to Execute**
-2. **Expected Terminal Output (What to read & look for in terminal)**
-3. **How to Verify Configuration Correctness & Expected Verification Output**
+1. **Command to Execute**3. **How to Verify Configuration Correctness & Expected Verification Output**
 
 ---
 
@@ -44,13 +42,6 @@ gcloud compute machine-images create gold-image-v2-4 \
     --source-instance-zone=us-central1-a
 ```
 
-#### Expected Terminal Output:
-```text
-Stopping instance [Golden-VM-Template]...done.
-Updated [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/zones/us-central1-a/instances/Golden-VM-Template].
-Created machine image [gold-image-v2-4].
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute machine-images describe gold-image-v2-4 --format="yaml(name, status, totalStorageBytes)"
@@ -81,13 +72,6 @@ gcloud compute instance-templates create prod-web-template-v2 \
     --metadata-from-file=startup-script=./scripts/install_nginx.sh \
     --scopes=cloud-platform \
     --shielded-secure-boot
-```
-
-#### Expected Terminal Output:
-```text
-Created instance template [prod-web-template-v2].
-NAME                 MACHINE_TYPE   PREEMPTIBLE  CREATION_TIMESTAMP
-prod-web-template-v2  n2-standard-4               2026-09-12T13:40:12.123-07:00
 ```
 
 #### How to Verify Configuration Correctness:
@@ -606,13 +590,6 @@ gcloud compute instance-groups managed create prod-web-mig \
     --instance-redistribution-type=PROACTIVE
 ```
 
-#### Expected Terminal Output:
-```text
-Created instance group [prod-web-mig].
-NAME          LOCATION     SCOPE   REGION       BASE_INSTANCE_NAME  SIZE  TARGET_SIZE  INSTANCE_TEMPLATE     AUTOSCALED
-prod-web-mig  us-central1  region  us-central1  prod-web-mig        0     3            prod-web-template-v2  no
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute instance-groups managed list-instances prod-web-mig --region=us-central1
@@ -636,11 +613,6 @@ gcloud compute instance-groups managed rolling-action start-update prod-web-mig 
     --max-surge=1 \
     --max-unavailable=0 \
     --region=us-central1
-```
-
-#### Expected Terminal Output:
-```text
-Started rolling update of instance group [prod-web-mig].
 ```
 
 #### How to Verify Configuration Correctness:
@@ -669,11 +641,6 @@ gcloud compute instance-groups managed set-autoscaling prod-web-mig \
     --max-num-replicas=20 \
     --target-cpu-utilization=0.75 \
     --cool-down-period=90
-```
-
-#### Expected Terminal Output:
-```text
-Updated autoscaler [prod-web-mig-autoscaler].
 ```
 
 #### How to Verify Configuration Correctness:
@@ -710,12 +677,6 @@ gcloud compute instances reset prod-web-vm1 --zone=us-central1-a
 
 # Terminate and destroy VM instance
 gcloud compute instances delete prod-web-vm1 --zone=us-central1-a --quiet
-```
-
-#### Expected Terminal Output (Stop Command):
-```text
-Stopping instance [prod-web-vm1]...done.
-Updated [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/zones/us-central1-a/instances/prod-web-vm1].
 ```
 
 #### How to Verify Configuration Correctness:
@@ -762,13 +723,6 @@ gcloud compute instances set-machine-type utility-cm \
 
 # 3. Start target custom VM instance
 gcloud compute instances start utility-cm --zone=us-central1-a
-```
-
-#### Expected Terminal Output:
-```text
-Stopping instance [utility-cm]...done.
-Updated [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/zones/us-central1-a/instances/utility-cm].
-Starting instance [utility-cm]...done.
 ```
 
 #### How to Verify Configuration Correctness:
@@ -840,12 +794,6 @@ gcloud compute ssh private-web-vm --zone=us-central1-a --tunnel-through-iap
 
 # Retrieve serial console boot logs
 gcloud compute instances get-serial-port-output private-web-vm --zone=us-central1-a | tail -n 25
-```
-
-#### Expected Terminal Output (Serial Console Output):
-```text
-[   14.891230] cloud-init[982]: Cloud-init v. 23.4 finished at Sat, 12 Sep 2026 13:50:11 +0000. Datasource DataSourceGCE.
-[   15.012391] systemd[1]: Started Nginx HTTP Server.
 ```
 
 ---

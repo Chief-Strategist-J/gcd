@@ -5,8 +5,6 @@ This document is a generalized, production-ready operational reference manual fo
 Every section includes:
 1. **Generalized CLI Command Template**
 2. **Key Parameter Descriptions & Defaults**
-3. **Expected Terminal Output & Verification Commands**
-
 ---
 
 ## Table of Contents
@@ -49,11 +47,6 @@ gcloud storage buckets create gs://${BUCKET_NAME} \
 # --public-access-prevention: Enforces IAM org policy preventing public access
 ```
 
-#### Expected Terminal Output:
-```text
-Creating gs://YOUR_GLOBALLY_UNIQUE_BUCKET_NAME/...
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud storage buckets describe gs://${BUCKET_NAME} \
@@ -81,11 +74,6 @@ Newly uploaded objects without an explicit storage class inherit the bucket's de
 ```bash
 gcloud storage buckets update gs://${BUCKET_NAME} --default-storage-class=TARGET_STORAGE_CLASS
 # TARGET_STORAGE_CLASS: NEARLINE, COLDLINE, or ARCHIVE
-```
-
-#### Expected Terminal Output:
-```text
-Updating gs://YOUR_GLOBALLY_UNIQUE_BUCKET_NAME/...
 ```
 
 ---
@@ -132,12 +120,6 @@ gcloud storage objects update gs://${BUCKET_NAME}/path/in/bucket/file.pdf \
 # TARGET_STORAGE_CLASS: NEARLINE, COLDLINE, or ARCHIVE
 ```
 
-#### Expected Terminal Output:
-```text
-Copying file:///path/to/local_file.pdf to gs://YOUR_GLOBALLY_UNIQUE_BUCKET_NAME/path/in/bucket/file.pdf
-Updating gs://YOUR_GLOBALLY_UNIQUE_BUCKET_NAME/path/in/bucket/file.pdf...
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud storage objects describe gs://${BUCKET_NAME}/path/in/bucket/file.pdf \
@@ -175,12 +157,6 @@ gcloud storage ls --soft-deleted gs://${BUCKET_NAME}/
 
 # 3. Restore Soft-Deleted Object using Generation URI
 gcloud storage restore gs://${BUCKET_NAME}/path/to/object.ext#GENERATION_ID
-```
-
-#### Expected Terminal Output:
-```text
-Updating gs://YOUR_GLOBALLY_UNIQUE_BUCKET_NAME/...
-Restoring gs://YOUR_GLOBALLY_UNIQUE_BUCKET_NAME/path/to/object.ext#GENERATION_ID...
 ```
 
 ---

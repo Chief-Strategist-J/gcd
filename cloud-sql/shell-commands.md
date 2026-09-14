@@ -5,8 +5,6 @@ This document is an exhaustive, production-grade operational reference manual fo
 Every command snippet includes:
 1. **Generalized CLI Command Template**
 2. **Key Parameter Descriptions & Defaults**
-3. **Expected Terminal Output & Verification Commands**
-
 ---
 
 ## Table of Contents
@@ -73,12 +71,6 @@ gcloud sql instances create ${INSTANCE_NAME}-mssql \
 # --storage-auto-increase: Dynamically increases storage capacity up to 64 TB when space runs low
 ```
 
-#### Expected Terminal Output:
-```text
-Creating Cloud SQL instance...done.
-Created [https://sqladmin.googleapis.com/sql/v1beta4/projects/YOUR_PROJECT_ID/instances/YOUR_INSTANCE_NAME-mysql].
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud sql instances describe ${INSTANCE_NAME}-mysql \
@@ -119,12 +111,6 @@ gcloud sql users create app_user \
 # 3. List Databases and Users
 gcloud sql databases list --instance=${INSTANCE_NAME}-mysql
 gcloud sql users list --instance=${INSTANCE_NAME}-mysql
-```
-
-#### Expected Terminal Output:
-```text
-Creating database app_production...done.
-Creating user app_user...done.
 ```
 
 ---
@@ -194,12 +180,6 @@ export INSTANCE_CONNECTION_NAME="${PROJECT_ID}:${REGION}:${INSTANCE_NAME}-mysql"
 mysql -h 127.0.0.1 -u app_user -p --database=app_production
 ```
 
-#### Expected Terminal Output:
-```text
-2026/09/13 16:15:00 Authorizing with Application Default Credentials...
-2026/09/13 16:15:01 Listening on 127.0.0.1:3306 for YOUR_PROJECT_ID:us-central1:YOUR_INSTANCE_NAME-mysql
-```
-
 ---
 
 ### 3. Authorized Networks (Public IP Restriction)
@@ -223,11 +203,6 @@ gcloud sql instances failover ${INSTANCE_NAME}-mysql --project=${PROJECT_ID} --q
 # 2. Monitor Failover State & Primary Zone Switch
 gcloud sql instances describe ${INSTANCE_NAME}-mysql \
     --format="yaml(name, state, gceZone, secondaryGceZone)"
-```
-
-#### Expected Terminal Output:
-```text
-Failing over Cloud SQL instance...done.
 ```
 
 #### Expected Verification Output:
@@ -367,13 +342,6 @@ gcloud sql instances create ${INSTANCE_NAME} \
 gcloud sql databases create wordpress --instance=${INSTANCE_NAME}
 ```
 
-#### Expected Terminal Output:
-```text
-Creating Cloud SQL instance...done.
-Created [https://sqladmin.googleapis.com/sql/v1beta4/projects/PROJECT_ID/instances/wordpress-db].
-Creating database wordpress...done.
-```
-
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud sql instances describe ${INSTANCE_NAME} --format="yaml(name, state, ipAddresses)"
@@ -413,14 +381,6 @@ echo "SQL Connection Name: $SQL_CONNECTION"
 
 # 4. Launch Auth Proxy in Background Daemon Mode
 ./cloud-sql-proxy $SQL_CONNECTION --port=3306 &
-```
-
-#### Expected Terminal Output:
-```text
-SQL Connection Name: qwiklabs-gcp-01-12345:us-central1:wordpress-db
-2026/09/13 16:20:00 Authorizing with Application Default Credentials...
-2026/09/13 16:20:01 Listening on 127.0.0.1:3306 for qwiklabs-gcp-01-12345:us-central1:wordpress-db
-Ready for new connections
 ```
 
 ---
@@ -533,16 +493,6 @@ gcloud alloydb backups create alloydb-backup-01 \
     --project=${PROJECT_ID} \
     --region=${REGION} \
     --cluster=${CLUSTER_ID}
-```
-
-#### Expected Terminal Output:
-```text
-Creating cluster...done.
-Created cluster [prod-alloydb-cluster].
-Creating instance...done.
-Created instance [prod-alloydb-primary].
-Creating read pool...done.
-Created instance [prod-alloydb-read-pool].
 ```
 
 #### How to Verify Configuration Correctness:
