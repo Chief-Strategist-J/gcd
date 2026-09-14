@@ -1437,11 +1437,11 @@ This section provides pure `gcloud` shell commands that provision an entire Goog
    ↓
 3. Create Regional Custom Subnets (Primary IPv4, Secondary GKE Ranges & Dual-Stack IPv6)
    ↓
-4. Reserve Regional Static External IP (for Cloud NAT)
+4. Reserve Regional Static External IP (for Cloud NAT Gateway)
    ↓
-5. Provision Baseline VPC Firewall Rules (IAP SSH Allow, Intra-Subnet Mesh, Health Checks)
+5. Provision Baseline VPC Firewall Rules (Ingress IAP SSH/RDP, Intra-Subnet Mesh, Health Checks, Egress NAT, Logged Deny Default)
    ↓
-6. Provision Virtual Router & Cloud NAT Gateway (Secure Outbound Internet Access for Private VMs)
+6. Provision Virtual Router & Exhaustive Cloud NAT Gateway (Ports, Dynamic Allocation, Timeouts & All Log Filters)
    ↓
 7. Configure Custom VPC Static Routes (Default & Custom NVA Next-Hops)
    ↓
@@ -1493,16 +1493,18 @@ gcloud compute addresses create gcd-nat-static-ip-uscentral1 \
     --region=us-central1 \
     --network-tier=PREMIUM
 
-# Step 5: Provision VPC Ingress Firewall Rules
-gcloud compute firewall-rules create gcd-prod-custom-vpc-allow-iap-ssh \
+# Step 5: Provision Exhaustive VPC Firewall Rules (Ingress, Egress & Audit Logging)
+# Rule 5.1: Ingress SSH (22) & RDP (3389) via Google Identity-Aware Proxy (IAP)
+gcloud compute firewall-rules create gcd-prod-custom-vpc-allow-iap-ssh-rdp \
     --network=gcd-prod-custom-vpc \
     --direction=INGRESS \
     --priority=1000 \
     --action=ALLOW \
-    --rules=tcp:22 \
+    --rules=tcp:22,tcp:3389 \
     --source-ranges=35.235.240.0/20 \
     --target-tags=iap-enabled
 
+# Rule 5.2: Ingress Intra-Subnet Communication Mesh
 gcloud compute firewall-rules create gcd-prod-custom-vpc-allow-internal-mesh \
     --network=gcd-prod-custom-vpc \
     --direction=INGRESS \
@@ -1511,16 +1513,46 @@ gcloud compute firewall-rules create gcd-prod-custom-vpc-allow-internal-mesh \
     --rules=tcp,udp,icmp \
     --source-ranges=10.1.0.0/16
 
+# Rule 5.3: Ingress Google Load Balancer Health Check Probes
 gcloud compute firewall-rules create gcd-prod-custom-vpc-allow-health-checks \
     --network=gcd-prod-custom-vpc \
     --direction=INGRESS \
     --priority=1000 \
     --action=ALLOW \
-    --rules=tcp:80,tcp:443 \
+    --rules=tcp:80,tcp:443,tcp:8080 \
     --source-ranges=35.191.0.0/16,130.211.0.0/22 \
     --target-tags=web-backend
 
-# Step 6: Provision Cloud Router & Cloud NAT Gateway
+# Rule 5.4: Explicit Egress Allow for Web & Outbound NAT Traffic
+gcloud compute firewall-rules create gcd-prod-custom-vpc-allow-egress-web \
+    --network=gcd-prod-custom-vpc \
+    --direction=EGRESS \
+    --priority=1000 \
+    --action=ALLOW \
+    --rules=tcp:80,tcp:443 \
+    --destination-ranges=0.0.0.0/0
+
+# Rule 5.5: Logged Ingress Deny-All Baseline Policy (Security Intrusion Audit)
+gcloud compute firewall-rules create gcd-prod-custom-vpc-deny-all-ingress-log \
+    --network=gcd-prod-custom-vpc \
+    --direction=INGRESS \
+    --priority=65000 \
+    --action=DENY \
+    --rules=all \
+    --source-ranges=0.0.0.0/0 \
+    --enable-logging
+
+# Rule 5.6: Logged Egress Deny-All Baseline Policy (Exfiltration Audit)
+gcloud compute firewall-rules create gcd-prod-custom-vpc-deny-all-egress-log \
+    --network=gcd-prod-custom-vpc \
+    --direction=EGRESS \
+    --priority=65000 \
+    --action=DENY \
+    --rules=all \
+    --destination-ranges=0.0.0.0/0 \
+    --enable-logging
+
+# Step 6: Provision Cloud Router & Exhaustive Cloud NAT Gateway (All Parameters Tuning)
 gcloud compute routers create gcd-nat-router-uscentral1 \
     --network=gcd-prod-custom-vpc \
     --region=us-central1 \
@@ -1531,7 +1563,16 @@ gcloud compute routers nats create gcd-nat-gateway-uscentral1 \
     --region=us-central1 \
     --nat-custom-manual-ip-addresses=gcd-nat-static-ip-uscentral1 \
     --nat-all-subnet-ip-ranges \
-    --enable-logging
+    --min-ports-per-vm=64 \
+    --max-ports-per-vm=1024 \
+    --enable-dynamic-port-allocation \
+    --udp-idle-timeout=30s \
+    --tcp-established-idle-timeout=1200s \
+    --tcp-transitory-idle-timeout=30s \
+    --icmp-idle-timeout=30s \
+    --endpoint-types=ENDPOINT_TYPE_VM \
+    --enable-logging \
+    --log-filter=ALL
 
 # Step 7: Provision Custom VPC Routes
 gcloud compute routes create gcd-prod-custom-vpc-route-to-nva \
@@ -1570,7 +1611,7 @@ gcloud compute instances create private-app-server-01 \
 Run all commands in one single terminal line chained with `&&`:
 
 ```bash
-set -e && gcloud services enable compute.googleapis.com iap.googleapis.com dns.googleapis.com networkmanagement.googleapis.com && gcloud compute networks create gcd-prod-custom-vpc --subnet-mode=custom --bgp-routing-mode=global --mtu=1460 && gcloud compute networks subnets create prod-subnet-us-central1 --network=gcd-prod-custom-vpc --region=us-central1 --range=10.1.0.0/24 --enable-private-ip-google-access --secondary-range=pod-range=10.100.0.0/16,service-range=10.200.0.0/20 && gcloud compute networks subnets create prod-dualstack-subnet --network=gcd-prod-custom-vpc --region=us-central1 --range=10.2.0.0/24 --stack-type=IPV4_IPV6 --ipv6-access-type=EXTERNAL --enable-private-ip-google-access && gcloud compute addresses create gcd-nat-static-ip-uscentral1 --region=us-central1 --network-tier=PREMIUM && gcloud compute firewall-rules create gcd-prod-custom-vpc-allow-iap-ssh --network=gcd-prod-custom-vpc --direction=INGRESS --priority=1000 --action=ALLOW --rules=tcp:22 --source-ranges=35.235.240.0/20 --target-tags=iap-enabled && gcloud compute firewall-rules create gcd-prod-custom-vpc-allow-internal-mesh --network=gcd-prod-custom-vpc --direction=INGRESS --priority=1000 --action=ALLOW --rules=tcp,udp,icmp --source-ranges=10.1.0.0/16 && gcloud compute firewall-rules create gcd-prod-custom-vpc-allow-health-checks --network=gcd-prod-custom-vpc --direction=INGRESS --priority=1000 --action=ALLOW --rules=tcp:80,tcp:443 --source-ranges=35.191.0.0/16,130.211.0.0/22 --target-tags=web-backend && gcloud compute routers create gcd-nat-router-uscentral1 --network=gcd-prod-custom-vpc --region=us-central1 --asn=65001 && gcloud compute routers nats create gcd-nat-gateway-uscentral1 --router=gcd-nat-router-uscentral1 --region=us-central1 --nat-custom-manual-ip-addresses=gcd-nat-static-ip-uscentral1 --nat-all-subnet-ip-ranges --enable-logging && gcloud compute routes create gcd-prod-custom-vpc-route-to-nva --network=gcd-prod-custom-vpc --destination-range=172.16.0.0/12 --next-hop-gateway=default-internet-gateway --priority=800 && gcloud dns managed-zones create gcd-private-dns-zone --dns-name="gcd.internal." --description="Private Internal DNS Managed Zone" --visibility=private --networks=gcd-prod-custom-vpc && gcloud dns record-sets create "db.gcd.internal." --zone=gcd-private-dns-zone --type=A --ttl=300 --rrdatas="10.1.0.10" && gcloud compute instances create private-app-server-01 --zone=us-central1-a --machine-type=e2-medium --subnet=prod-subnet-us-central1 --no-address --tags=iap-enabled,web-backend --private-network-ip=10.1.0.10
+set -e && gcloud services enable compute.googleapis.com iap.googleapis.com dns.googleapis.com networkmanagement.googleapis.com && gcloud compute networks create gcd-prod-custom-vpc --subnet-mode=custom --bgp-routing-mode=global --mtu=1460 && gcloud compute networks subnets create prod-subnet-us-central1 --network=gcd-prod-custom-vpc --region=us-central1 --range=10.1.0.0/24 --enable-private-ip-google-access --secondary-range=pod-range=10.100.0.0/16,service-range=10.200.0.0/20 && gcloud compute networks subnets create prod-dualstack-subnet --network=gcd-prod-custom-vpc --region=us-central1 --range=10.2.0.0/24 --stack-type=IPV4_IPV6 --ipv6-access-type=EXTERNAL --enable-private-ip-google-access && gcloud compute addresses create gcd-nat-static-ip-uscentral1 --region=us-central1 --network-tier=PREMIUM && gcloud compute firewall-rules create gcd-prod-custom-vpc-allow-iap-ssh-rdp --network=gcd-prod-custom-vpc --direction=INGRESS --priority=1000 --action=ALLOW --rules=tcp:22,tcp:3389 --source-ranges=35.235.240.0/20 --target-tags=iap-enabled && gcloud compute firewall-rules create gcd-prod-custom-vpc-allow-internal-mesh --network=gcd-prod-custom-vpc --direction=INGRESS --priority=1000 --action=ALLOW --rules=tcp,udp,icmp --source-ranges=10.1.0.0/16 && gcloud compute firewall-rules create gcd-prod-custom-vpc-allow-health-checks --network=gcd-prod-custom-vpc --direction=INGRESS --priority=1000 --action=ALLOW --rules=tcp:80,tcp:443,tcp:8080 --source-ranges=35.191.0.0/16,130.211.0.0/22 --target-tags=web-backend && gcloud compute firewall-rules create gcd-prod-custom-vpc-allow-egress-web --network=gcd-prod-custom-vpc --direction=EGRESS --priority=1000 --action=ALLOW --rules=tcp:80,tcp:443 --destination-ranges=0.0.0.0/0 && gcloud compute firewall-rules create gcd-prod-custom-vpc-deny-all-ingress-log --network=gcd-prod-custom-vpc --direction=INGRESS --priority=65000 --action=DENY --rules=all --source-ranges=0.0.0.0/0 --enable-logging && gcloud compute firewall-rules create gcd-prod-custom-vpc-deny-all-egress-log --network=gcd-prod-custom-vpc --direction=EGRESS --priority=65000 --action=DENY --rules=all --destination-ranges=0.0.0.0/0 --enable-logging && gcloud compute routers create gcd-nat-router-uscentral1 --network=gcd-prod-custom-vpc --region=us-central1 --asn=65001 && gcloud compute routers nats create gcd-nat-gateway-uscentral1 --router=gcd-nat-router-uscentral1 --region=us-central1 --nat-custom-manual-ip-addresses=gcd-nat-static-ip-uscentral1 --nat-all-subnet-ip-ranges --min-ports-per-vm=64 --max-ports-per-vm=1024 --enable-dynamic-port-allocation --udp-idle-timeout=30s --tcp-established-idle-timeout=1200s --tcp-transitory-idle-timeout=30s --icmp-idle-timeout=30s --endpoint-types=ENDPOINT_TYPE_VM --enable-logging --log-filter=ALL && gcloud compute routes create gcd-prod-custom-vpc-route-to-nva --network=gcd-prod-custom-vpc --destination-range=172.16.0.0/12 --next-hop-gateway=default-internet-gateway --priority=800 && gcloud dns managed-zones create gcd-private-dns-zone --dns-name="gcd.internal." --description="Private Internal DNS Managed Zone" --visibility=private --networks=gcd-prod-custom-vpc && gcloud dns record-sets create "db.gcd.internal." --zone=gcd-private-dns-zone --type=A --ttl=300 --rrdatas="10.1.0.10" && gcloud compute instances create private-app-server-01 --zone=us-central1-a --machine-type=e2-medium --subnet=prod-subnet-us-central1 --no-address --tags=iap-enabled,web-backend --private-network-ip=10.1.0.10
 ```
 
 #### Expected Terminal Output:
@@ -1580,6 +1621,9 @@ Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/netw
 Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/subnetworks/prod-subnet-us-central1].
 Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/subnetworks/prod-dualstack-subnet].
 Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/addresses/gcd-nat-static-ip-uscentral1].
+Creating firewall rule...done.
+Creating firewall rule...done.
+Creating firewall rule...done.
 Creating firewall rule...done.
 Creating firewall rule...done.
 Creating firewall rule...done.
@@ -1596,11 +1640,11 @@ Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/zones/us-ce
 # Verify Subnet Status
 gcloud compute networks subnets list --network=gcd-prod-custom-vpc --format="table(name, region, ipCidrRange, privateIpGoogleAccess)"
 
-# Verify Firewall Rules
-gcloud compute firewall-rules list --filter="network=gcd-prod-custom-vpc" --format="table(name, direction, priority, allow)"
+# Verify All Firewall Rules (Ingress & Egress)
+gcloud compute firewall-rules list --filter="network=gcd-prod-custom-vpc" --format="table(name, direction, priority, action, allow, deny, enableLogging)"
 
-# Verify NAT Configuration
-gcloud compute routers nats describe gcd-nat-gateway-uscentral1 --router=gcd-nat-router-uscentral1 --region=us-central1 --format="yaml(name, natIpAllocateOption, userAllocatedNatIps)"
+# Verify Exhaustive NAT Configuration & Parameters
+gcloud compute routers nats describe gcd-nat-gateway-uscentral1 --router=gcd-nat-router-uscentral1 --region=us-central1
 
 # Verify Private VM Instance
 gcloud compute instances list --filter="name=private-app-server-01" --format="table(name, zone, status, internalIp)"
@@ -1615,15 +1659,32 @@ NAME                     REGION       RANGE        PRIVATE_IP_GOOGLE_ACCESS
 prod-subnet-us-central1  us-central1  10.1.0.0/24  True
 prod-dualstack-subnet    us-central1  10.2.0.0/24  True
 
-NAME                                DIRECTION  PRIORITY  ALLOW
-gcd-prod-custom-vpc-allow-health    INGRESS    1000      tcp:80,tcp:443
-gcd-prod-custom-vpc-allow-iap-ssh   INGRESS    1000      tcp:22
-gcd-prod-custom-vpc-allow-internal  INGRESS    1000      tcp,udp,icmp
+NAME                                       DIRECTION  PRIORITY  ACTION  ALLOW           DENY  LOGGING
+gcd-prod-custom-vpc-allow-iap-ssh-rdp      INGRESS    1000      ALLOW   tcp:22,tcp:3389       False
+gcd-prod-custom-vpc-allow-internal-mesh    INGRESS    1000      ALLOW   tcp,udp,icmp          False
+gcd-prod-custom-vpc-allow-health-checks    INGRESS    1000      ALLOW   tcp:80,443,8080       False
+gcd-prod-custom-vpc-allow-egress-web       EGRESS     1000      ALLOW   tcp:80,tcp:443        False
+gcd-prod-custom-vpc-deny-all-ingress-log   INGRESS    65000     DENY                    all   True
+gcd-prod-custom-vpc-deny-all-egress-log    EGRESS     65000     DENY                    all   True
 
+enableDynamicPortAllocation: true
+enableLogging: true
+endpointTypes:
+- ENDPOINT_TYPE_VM
+icmpIdleTimeoutSec: 30
+logConfig:
+  enable: true
+  filter: ALL
+maxPortsPerVm: 1024
+minPortsPerVm: 64
 name: gcd-nat-gateway-uscentral1
 natIpAllocateOption: MANUAL_ONLY
-userAllocatedNatIps:
+natIps:
 - https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/addresses/gcd-nat-static-ip-uscentral1
+sourceSubnetworkIpRangesToNat: ALL_SUBNETWORKS_ALL_IP_RANGES
+tcpEstablishedIdleTimeoutSec: 1200
+tcpTransitoryIdleTimeoutSec: 30
+udpIdleTimeoutSec: 30
 
 NAME                  ZONE           STATUS   INTERNAL_IP
 private-app-server-01  us-central1-a  RUNNING  10.1.0.10
@@ -1631,5 +1692,6 @@ private-app-server-01  us-central1-a  RUNNING  10.1.0.10
 34.122.10.55
 10.1.0.10
 ```
+
 
 
