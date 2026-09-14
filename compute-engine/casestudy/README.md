@@ -9,6 +9,7 @@ Welcome to the **Google Cloud Compute Engine Deep-Dive Architecture & Case Study
 | Document | Focus Area | Key Architectural Concepts Covered |
 | :--- | :--- | :--- |
 | [**1. Managed Instance Groups, Autoscaling & Load Balancing**](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/mig-autoscaling-loadbalancing.md) | Fleet Management, Resiliency & Scale | Managed Instance Groups (MIGs), Instance Templates, Auto-Healing Health Checks, Zonal vs Regional MIGs (Zonal Outage Resilience), Stateless vs Stateful MIGs, Dynamic Autoscaling (CPU/RPS/Queue Metrics), Zero-Downtime Rolling Updates, Layer 4 NLB vs Layer 7 ALB Software-Defined Load Balancing. |
+| [**2. Global Application Load Balancer in Action**](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/alb-global-routing-in-action.md) | Global Request Lifecycle & Traffic Management | Single Global Anycast IP, Global Forwarding Rules, Target HTTP Proxy, URL Maps, Capacity-Based & Proximity-Based Routing, Cross-Region Failover Overflow, Content-Based URL Path Routing (`/video` vs `/*`). |
 
 ---
 

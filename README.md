@@ -19,7 +19,8 @@ gcd/
 │   ├── README.md                     # Compute Engine Feature Index
 │   ├── casestudy/                    # Deep-Dive Case Study Module Index & Reports
 │   │   ├── README.md                 # Case Study Sitemap
-│   │   └── mig-autoscaling-loadbalancing.md # Deep-Dive Case Study: MIGs, Autoscaling & Load Balancing
+│   │   ├── mig-autoscaling-loadbalancing.md # Case Study 1: MIGs, Autoscaling & Load Balancing
+│   │   └── alb-global-routing-in-action.md  # Case Study 2: Global ALB Routing, Capacity & Failover
 │   ├── hld-lld-design.md             # High-Level Architecture & Low-Level State Machine
 │   ├── decision-tree.md              # ASCII & Visual Decision Trees (Machine Specs & SSH)
 │   ├── shell-commands.md             # In-Depth CLI Manual & Error Matrix (`gcloud compute`)
@@ -84,7 +85,8 @@ gcd/
 
 ### Feature 2: Compute Engine (`/compute-engine/`)
 * **[Case Study Index (`compute-engine/casestudy/README.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/README.md)**
-* **[Case Study: MIGs, Autoscaling & Load Balancing (`compute-engine/casestudy/mig-autoscaling-loadbalancing.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/mig-autoscaling-loadbalancing.md)**
+* **[Case Study 1: MIGs, Autoscaling & Load Balancing (`compute-engine/casestudy/mig-autoscaling-loadbalancing.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/mig-autoscaling-loadbalancing.md)**
+* **[Case Study 2: Global ALB Routing in Action (`compute-engine/casestudy/alb-global-routing-in-action.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/alb-global-routing-in-action.md)**
 * **[HLD & LLD Design (`compute-engine/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/hld-lld-design.md)**
 * **[ASCII & Visual Decision Trees (`compute-engine/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/decision-tree.md)**
 * **[Shell Command Reference & Failure Resolutions (`compute-engine/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/shell-commands.md)**
