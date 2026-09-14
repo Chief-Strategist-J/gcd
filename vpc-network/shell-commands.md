@@ -22,7 +22,9 @@ Every command snippet includes:
 10. [Category 10: Custom VPC Routes & Virtual Router Management](#category-10-custom-vpc-routes--virtual-router-management)
 11. [Category 11: Advanced Stateful Ingress & Egress Firewall Policies](#category-11-advanced-stateful-ingress--egress-firewall-policies)
 12. [Category 12: Cloud VPN Provisioning (Classic VPN, HA VPN, BGP Cloud Router, AWS Interop & GCP-to-GCP HA VPN)](#category-12-cloud-vpn-provisioning-classic-vpn-ha-vpn-bgp-cloud-router-aws-interop--gcp-to-gcp-ha-vpn)
-13. [Category 13: Exhaustive Failure Diagnosis & Resolution Matrix](#category-13-exhaustive-failure-diagnosis--resolution-matrix)
+13. [Category 13: Dedicated, Partner & Cross-Cloud Interconnect Operations](#category-13-dedicated-partner--cross-cloud-interconnect-operations)
+14. [Category 14: Exhaustive Failure Diagnosis & Resolution Matrix](#category-14-exhaustive-failure-diagnosis--resolution-matrix)
+15. [Category 15: Master End-to-End Sequential Deployment Script](#category-15-master-end-to-end-sequential-deployment-script)
 
 ---
 
@@ -1420,3 +1422,287 @@ gcloud compute vpn-tunnels create ha-vpn-over-interconnect-tunnel-0 \
 | **`MTU_EXCEEDED_1460_VPN`** | Packet dropped or fragmented over Classic/HA VPN because peer MTU > 1460 bytes. | `gcloud compute ssh VM --command="ping -s 1432 -M do PEER_IP"` | Configure on-premises VPN gateway and host interface MTU to $\le 1460$ bytes due to IPsec encapsulation overhead. |
 | **`INTERCONNECT_ATTACHMENT_PENDING`** | Partner Interconnect attachment created but pairing key not configured on partner portal. | `gcloud compute interconnects attachments describe ATTACHMENT --region=REGION` | Copy pairing key and submit to service provider partner (Equinix/Megaport) to activate VLAN circuit. |
 | **`INTERCONNECT_SLA_METRO_SINGLE`** | Dedicated Interconnect circuits provisioned in single colocation facility, missing 99.99% SLA. | `gcloud compute interconnects list` | To achieve 99.99% SLA, provision at least 2 circuits in Metro 1 and 2 circuits in Metro 2 across distinct edge availability domains. |
+
+---
+
+## Category 15: Master End-to-End Sequential Deployment Script
+
+This section provides a single, unified, production-grade master bash script that provisions an entire Google Cloud VPC network architecture in **strict logical dependency order**.
+
+### Execution Dependency Sequence
+```text
+1. Enable Required GCP APIs (Compute Engine, IAP, Cloud DNS, Network Management)
+   ↓
+2. Create Custom Mode VPC Network (Global BGP Routing, Custom MTU 1460)
+   ↓
+3. Create Regional Custom Subnets (Primary IPv4, Secondary GKE Ranges & Dual-Stack IPv6)
+   ↓
+4. Reserve Regional Static IPs (Cloud NAT External IP & Internal Gateway VIPs)
+   ↓
+5. Provision VPC Firewall Rules (IAP SSH Allow, Intra-Subnet Mesh, Load Balancer Health Checks)
+   ↓
+6. Provision Cloud Router & Cloud NAT Gateway (Secure Outbound Internet Access for Private VMs)
+   ↓
+7. Configure Custom VPC Static Routes (Default & Custom Appliance Next-Hops)
+   ↓
+8. Provision Cloud DNS Private Managed Zone & Resource Records
+   ↓
+9. Deploy Workload VM Instances (Private Internal IPs Only, Attached to Custom Subnet)
+   ↓
+10. Execute Automated Verification Suite & Resource Output Report
+```
+
+---
+
+### 1. Master Production Provisioning Script (Automated Shell Pipeline)
+
+Save the code below as `deploy-vpc-stack.sh` and execute with `bash deploy-vpc-stack.sh`:
+
+```bash
+#!/usr/bin/env bash
+# ==============================================================================
+# MASTER VPC DEPLOYMENT PIPELINE - END-TO-END GCP INFRASTRUCTURE PROVISIONING
+# ==============================================================================
+set -euo pipefail
+
+# --- STAGE 0: ENVIRONMENT CONFIGURATION & VARIABLES ---
+export PROJECT_ID="$(gcloud config get-value project 2>/dev/null || echo "YOUR_PROJECT_ID")"
+export REGION="us-central1"
+export ZONE="us-central1-a"
+export VPC_NAME="gcd-prod-custom-vpc"
+export SUBNET_NAME="prod-subnet-us-central1"
+export DUALSTACK_SUBNET_NAME="prod-dualstack-subnet"
+export ROUTER_NAME="gcd-nat-router-uscentral1"
+export NAT_NAME="gcd-nat-gateway-uscentral1"
+export NAT_IP_NAME="gcd-nat-static-ip-uscentral1"
+export DNS_ZONE_NAME="gcd-private-dns-zone"
+export DNS_DOMAIN="gcd.internal."
+export WORKLOAD_VM_NAME="private-app-server-01"
+
+echo "======================================================================"
+echo "Starting Master VPC Infrastructure Provisioning in Project: ${PROJECT_ID}"
+echo "======================================================================"
+
+# --- STAGE 1: ENABLE REQUIRED GCP SERVICES ---
+echo "[1/10] Enabling required Google Cloud APIs..."
+gcloud services enable \
+    compute.googleapis.com \
+    iap.googleapis.com \
+    dns.googleapis.com \
+    networkmanagement.googleapis.com
+
+# --- STAGE 2: PROVISION CUSTOM MODE VPC NETWORK ---
+echo "[2/10] Provisioning Custom Mode VPC Network (${VPC_NAME})..."
+gcloud compute networks create "${VPC_NAME}" \
+    --subnet-mode=custom \
+    --bgp-routing-mode=global \
+    --mtu=1460
+
+# --- STAGE 3: PROVISION REGIONAL SUBNETWORKS ---
+echo "[3/10] Creating Regional Custom Subnets..."
+# Primary Production Subnet with Secondary Ranges for Containers/GKE
+gcloud compute networks subnets create "${SUBNET_NAME}" \
+    --network="${VPC_NAME}" \
+    --region="${REGION}" \
+    --range=10.1.0.0/24 \
+    --enable-private-ip-google-access \
+    --secondary-range=pod-range=10.100.0.0/16,service-range=10.200.0.0/20
+
+# Dual-Stack IPv4/IPv6 Subnet
+gcloud compute networks subnets create "${DUALSTACK_SUBNET_NAME}" \
+    --network="${VPC_NAME}" \
+    --region="${REGION}" \
+    --range=10.2.0.0/24 \
+    --stack-type=IPV4_IPV6 \
+    --ipv6-access-type=EXTERNAL \
+    --enable-private-ip-google-access
+
+# --- STAGE 4: RESERVE STATIC EXTERNAL & INTERNAL IP ADDRESSES ---
+echo "[4/10] Reserving Static IP Addresses..."
+gcloud compute addresses create "${NAT_IP_NAME}" \
+    --region="${REGION}" \
+    --network-tier=PREMIUM
+
+export RESERVED_NAT_IP="$(gcloud compute addresses describe "${NAT_IP_NAME}" --region="${REGION}" --format="value(address)")"
+echo "Reserved Static NAT External IP: ${RESERVED_NAT_IP}"
+
+# --- STAGE 5: PROVISION BASELINE VPC FIREWALL RULES ---
+echo "[5/10] Applying VPC Firewall Rules..."
+# Allow Identity-Aware Proxy (IAP) SSH Ingress (35.235.240.0/20)
+gcloud compute firewall-rules create "${VPC_NAME}-allow-iap-ssh" \
+    --network="${VPC_NAME}" \
+    --direction=INGRESS \
+    --priority=1000 \
+    --action=ALLOW \
+    --rules=tcp:22 \
+    --source-ranges=35.235.240.0/20 \
+    --target-tags=iap-enabled
+
+# Allow Intra-Subnet Internal Traffic
+gcloud compute firewall-rules create "${VPC_NAME}-allow-internal-mesh" \
+    --network="${VPC_NAME}" \
+    --direction=INGRESS \
+    --priority=1000 \
+    --action=ALLOW \
+    --rules=tcp,udp,icmp \
+    --source-ranges=10.1.0.0/16
+
+# Allow GCP Health Check Probes (Load Balancers & Instance Groups)
+gcloud compute firewall-rules create "${VPC_NAME}-allow-health-checks" \
+    --network="${VPC_NAME}" \
+    --direction=INGRESS \
+    --priority=1000 \
+    --action=ALLOW \
+    --rules=tcp:80,tcp:443 \
+    --source-ranges=35.191.0.0/16,130.211.0.0/22 \
+    --target-tags=web-backend
+
+# --- STAGE 6: PROVISION VIRTUAL ROUTER & CLOUD NAT GATEWAY ---
+echo "[6/10] Provisioning Cloud Router and Cloud NAT Gateway..."
+gcloud compute routers create "${ROUTER_NAME}" \
+    --network="${VPC_NAME}" \
+    --region="${REGION}" \
+    --asn=65001
+
+gcloud compute routers nats create "${NAT_NAME}" \
+    --router="${ROUTER_NAME}" \
+    --region="${REGION}" \
+    --nat-custom-manual-ip-addresses="${NAT_IP_NAME}" \
+    --nat-all-subnet-ip-ranges \
+    --enable-logging
+
+# --- STAGE 7: CONFIGURE CUSTOM VPC ROUTES ---
+echo "[7/10] Provisioning Custom VPC Routes..."
+gcloud compute routes create "${VPC_NAME}-route-to-nva" \
+    --network="${VPC_NAME}" \
+    --destination-range=172.16.0.0/12 \
+    --next-hop-gateway=default-internet-gateway \
+    --priority=800
+
+# --- STAGE 8: PROVISION PRIVATE CLOUD DNS MANAGED ZONE ---
+echo "[8/10] Creating Cloud DNS Private Managed Zone..."
+gcloud dns managed-zones create "${DNS_ZONE_NAME}" \
+    --dns-name="${DNS_DOMAIN}" \
+    --description="Private Internal DNS Managed Zone for VPC" \
+    --visibility=private \
+    --networks="${VPC_NAME}"
+
+# Add A-Record in Private DNS Zone
+gcloud dns record-sets create "db.${DNS_DOMAIN}" \
+    --zone="${DNS_ZONE_NAME}" \
+    --type=A \
+    --ttl=300 \
+    --rrdatas="10.1.0.10"
+
+# --- STAGE 9: DEPLOY PRIVATE WORKLOAD VM INSTANCE ---
+echo "[9/10] Launching Private Compute Engine Instance (No Public IP)..."
+gcloud compute instances create "${WORKLOAD_VM_NAME}" \
+    --zone="${ZONE}" \
+    --machine-type=e2-medium \
+    --subnet="${SUBNET_NAME}" \
+    --no-address \
+    --tags=iap-enabled,web-backend \
+    --private-network-ip=10.1.0.10 \
+    --metadata=startup-script='#!/bin/bash
+apt-get update && apt-get install -y curl dnsutils net-tools'
+
+# --- STAGE 10: AUTOMATED VERIFICATION & AUDIT REPORT ---
+echo "[10/10] Generating Verification Report..."
+echo "======================================================================"
+echo "Master VPC Infrastructure Deployment Completed Successfully!"
+echo "======================================================================"
+gcloud compute networks subnets list --network="${VPC_NAME}" --format="table(name, region, ipCidrRange, privateIpGoogleAccess)"
+gcloud compute firewall-rules list --filter="network=${VPC_NAME}" --format="table(name, direction, priority, allow)"
+gcloud compute routers nats describe "${NAT_NAME}" --router="${ROUTER_NAME}" --region="${REGION}" --format="yaml(name, natIpAllocateOption, userAllocatedNatIps)"
+gcloud compute instances list --filter="name=${WORKLOAD_VM_NAME}" --format="table(name, zone, status, internalIp)"
+```
+
+---
+
+### 2. Compressed One-Shot Command Line (Single Terminal Execution String)
+
+If you prefer to execute the full pipeline directly in your terminal without creating a shell script file, copy and paste this compound command:
+
+```bash
+set -e && \
+gcloud services enable compute.googleapis.com iap.googleapis.com dns.googleapis.com networkmanagement.googleapis.com && \
+gcloud compute networks create gcd-prod-custom-vpc --subnet-mode=custom --bgp-routing-mode=global --mtu=1460 && \
+gcloud compute networks subnets create prod-subnet-us-central1 --network=gcd-prod-custom-vpc --region=us-central1 --range=10.1.0.0/24 --enable-private-ip-google-access --secondary-range=pod-range=10.100.0.0/16,service-range=10.200.0.0/20 && \
+gcloud compute addresses create gcd-nat-static-ip-uscentral1 --region=us-central1 --network-tier=PREMIUM && \
+gcloud compute firewall-rules create gcd-prod-custom-vpc-allow-iap-ssh --network=gcd-prod-custom-vpc --direction=INGRESS --priority=1000 --action=ALLOW --rules=tcp:22 --source-ranges=35.235.240.0/20 --target-tags=iap-enabled && \
+gcloud compute firewall-rules create gcd-prod-custom-vpc-allow-internal-mesh --network=gcd-prod-custom-vpc --direction=INGRESS --priority=1000 --action=ALLOW --rules=tcp,udp,icmp --source-ranges=10.1.0.0/16 && \
+gcloud compute routers create gcd-nat-router-uscentral1 --network=gcd-prod-custom-vpc --region=us-central1 --asn=65001 && \
+gcloud compute routers nats create gcd-nat-gateway-uscentral1 --router=gcd-nat-router-uscentral1 --region=us-central1 --nat-custom-manual-ip-addresses=gcd-nat-static-ip-uscentral1 --nat-all-subnet-ip-ranges --enable-logging && \
+gcloud dns managed-zones create gcd-private-dns-zone --dns-name="gcd.internal." --description="Private Internal DNS Managed Zone" --visibility=private --networks=gcd-prod-custom-vpc && \
+gcloud compute instances create private-app-server-01 --zone=us-central1-a --machine-type=e2-medium --subnet=prod-subnet-us-central1 --no-address --tags=iap-enabled --private-network-ip=10.1.0.10
+```
+
+#### Expected Terminal Output:
+```text
+======================================================================
+Starting Master VPC Infrastructure Provisioning in Project: YOUR_PROJECT_ID
+======================================================================
+[1/10] Enabling required Google Cloud APIs...
+Operation "operations/acf.123456789" finished successfully.
+[2/10] Provisioning Custom Mode VPC Network (gcd-prod-custom-vpc)...
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/networks/gcd-prod-custom-vpc].
+[3/10] Creating Regional Custom Subnets...
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/subnetworks/prod-subnet-us-central1].
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/subnetworks/prod-dualstack-subnet].
+[4/10] Reserving Static IP Addresses...
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/addresses/gcd-nat-static-ip-uscentral1].
+Reserved Static NAT External IP: 34.122.10.55
+[5/10] Applying VPC Firewall Rules...
+Creating firewall rule...done.
+Creating firewall rule...done.
+Creating firewall rule...done.
+[6/10] Provisioning Cloud Router and Cloud NAT Gateway...
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/routers/gcd-nat-router-uscentral1].
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/routers/gcd-nat-router-uscentral1/nats/gcd-nat-gateway-uscentral1].
+[7/10] Provisioning Custom VPC Routes...
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/global/routes/gcd-prod-custom-vpc-route-to-nva].
+[8/10] Creating Cloud DNS Private Managed Zone...
+Created [https://dns.googleapis.com/dns/v1/projects/YOUR_PROJECT/managedZones/gcd-private-dns-zone].
+Created [https://dns.googleapis.com/dns/v1/projects/YOUR_PROJECT/managedZones/gcd-private-dns-zone/rrsets/db.gcd.internal./A].
+[9/10] Launching Private Compute Engine Instance (No Public IP)...
+Created [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/zones/us-central1-a/instances/private-app-server-01].
+[10/10] Generating Verification Report...
+======================================================================
+Master VPC Infrastructure Deployment Completed Successfully!
+======================================================================
+NAME                     REGION       RANGE        PRIVATE_IP_GOOGLE_ACCESS
+prod-subnet-us-central1  us-central1  10.1.0.0/24  True
+prod-dualstack-subnet    us-central1  10.2.0.0/24  True
+
+NAME                                DIRECTION  PRIORITY  ALLOW
+gcd-prod-custom-vpc-allow-iap-ssh   INGRESS    1000      tcp:22
+gcd-prod-custom-vpc-allow-internal  INGRESS    1000      tcp,udp,icmp
+gcd-prod-custom-vpc-allow-health    INGRESS    1000      tcp:80,tcp:443
+
+name: gcd-nat-gateway-uscentral1
+natIpAllocateOption: MANUAL_ONLY
+userAllocatedNatIps:
+- https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/addresses/gcd-nat-static-ip-uscentral1
+
+NAME                  ZONE           STATUS   INTERNAL_IP
+private-app-server-01  us-central1-a  RUNNING  10.1.0.10
+```
+
+#### How to Verify End-to-End Setup:
+```bash
+# 1. Connect to private VM via IAP Tunneling (No public IP required)
+gcloud compute ssh private-app-server-01 --zone=us-central1-a --tunnel-through-iap
+
+# 2. Inside the VM session, verify Outbound Internet Connectivity via Cloud NAT (matches reserved NAT IP)
+curl -s https://ifconfig.me
+
+# 3. Inside the VM session, verify Private DNS Resolution
+dig +short db.gcd.internal.
+```
+
+#### Expected Verification Output:
+```text
+34.122.10.55
+10.1.0.10
+```
+
