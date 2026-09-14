@@ -3,7 +3,7 @@
 This document is an operational reference manual for Google Cloud Virtual Private Cloud (VPC) Networks, Subnets, Firewall Rules, IP Address Management, Bring Your Own IP (BYOIP), Virtual Routers, and Cloud DNS.
 
 Every command snippet includes:
-1. **Command to Execute**3. **How to Verify Configuration Correctness & Expected Verification Output**
+1. **Command to Execute**3. **How to Verify Configuration Correctness**
 
 ---
 
@@ -42,15 +42,6 @@ gcloud compute networks create gcd-prod-custom-vpc \
 gcloud compute networks describe gcd-prod-custom-vpc --format="yaml(name, autoCreateSubnetworks, routingConfig, mtu)"
 ```
 
-#### Expected Verification Output:
-```yaml
-autoCreateSubnetworks: false
-mtu: 1460
-name: gcd-prod-custom-vpc
-routingConfig:
-  routingMode: GLOBAL
-```
-
 ---
 
 ### 2. Convert Existing Auto Mode VPC Network to Custom Mode (Irreversible)
@@ -62,11 +53,6 @@ gcloud compute networks switch-mode gcd-dev-auto-vpc --mode=custom
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute networks describe gcd-dev-auto-vpc --format="value(autoCreateSubnetworks)"
-```
-
-#### Expected Verification Output:
-```yaml
-False
 ```
 
 ---
@@ -89,11 +75,6 @@ gcloud compute instances create test-no-vpc-vm --zone=us-central1-a
 gcloud compute networks list
 ```
 
-#### Expected Verification Output:
-```text
-Listed 0 items.
-```
-
 ---
 
 ### 4. Enable Required Network Management & IAP APIs
@@ -107,13 +88,6 @@ gcloud services enable iap.googleapis.com networkmanagement.googleapis.com
 gcloud services list --enabled --filter="name:(iap.googleapis.com OR networkmanagement.googleapis.com)"
 ```
 
-#### Expected Verification Output:
-```text
-NAME                                TITLE
-iap.googleapis.com                  Identity-Aware Proxy API
-networkmanagement.googleapis.com    Network Management API
-```
-
 ---
 
 ### 5. Create Auto Mode VPC Network for Prototyping
@@ -125,14 +99,6 @@ gcloud compute networks create mynetwork --subnet-mode=auto
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute networks subnets list --network=mynetwork --format="table(name, region, ipCidrRange)"
-```
-
-#### Expected Verification Output:
-```text
-NAME       REGION           RANGE
-mynetwork  us-central1      10.128.0.0/20
-mynetwork  europe-west1     10.132.0.0/20
-mynetwork  asia-east1       10.140.0.0/20
 ```
 
 ---
@@ -167,15 +133,6 @@ gcloud compute networks subnets create privatesubnet-notus \
 gcloud compute networks subnets list --sort-by=NETWORK --format="table(network, name, region, ipCidrRange)"
 ```
 
-#### Expected Verification Output:
-```text
-NETWORK        NAME                 REGION       RANGE
-managementnet  managementsubnet-us  us-central1  10.240.0.0/20
-mynetwork      mynetwork            us-central1  10.128.0.0/20
-privatenet     privatesubnet-notus  us-east1     172.20.0.0/20
-privatenet     privatesubnet-us     us-central1  172.16.0.0/24
-```
-
 ---
 
 ### 7. Cross-VPC Multi-Network Connectivity Audit (Internal IP Isolation vs External IP Access)
@@ -195,11 +152,6 @@ gcloud compute ssh mynet-us-vm --zone=us-central1-a --tunnel-through-iap --comma
 ```bash
 # Confirm that isolated VPCs require VPC Peering or Cloud VPN for internal IP communication
 gcloud compute network-peerings list
-```
-
-#### Expected Verification Output:
-```text
-Listed 0 items.
 ```
 
 ---
@@ -223,14 +175,6 @@ gcloud compute networks subnets describe prod-subnet-us-central1 \
     --format="yaml(name, ipCidrRange, gatewayAddress, privateIpGoogleAccess)"
 ```
 
-#### Expected Verification Output:
-```yaml
-gatewayAddress: 10.1.0.1
-ipCidrRange: 10.1.0.0/24
-name: prod-subnet-us-central1
-privateIpGoogleAccess: true
-```
-
 ---
 
 ## Category 3: Zero-Downtime Subnet IP Range Expansion
@@ -248,11 +192,6 @@ gcloud compute networks subnets expand-ip-range prod-subnet-us-central1 \
 gcloud compute networks subnets describe prod-subnet-us-central1 \
     --region=us-central1 \
     --format="value(ipCidrRange)"
-```
-
-#### Expected Verification Output:
-```text
-10.1.0.0/20
 ```
 
 ---
@@ -349,19 +288,6 @@ gcloud compute firewall-rules create allow-iap-ssh \
 gcloud compute firewall-rules describe allow-iap-ssh --format="yaml(name, sourceRanges, allowed, targetTags)"
 ```
 
-#### Expected Verification Output:
-```yaml
-allowed:
-- IPProtocol: tcp
-  ports:
-  - '22'
-name: allow-iap-ssh
-sourceRanges:
-- 35.235.240.0/20
-targetTags:
-- iap-gce
-```
-
 ---
 
 ### 3. Provision Multi-Protocol Combined Ingress Firewall Rules (ICMP, SSH, RDP)
@@ -380,13 +306,6 @@ gcloud compute firewall-rules create privatenet-allow-icmp-ssh-rdp \
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute firewall-rules list --sort-by=NETWORK --format="table(network, name, priority, allow)"
-```
-
-#### Expected Verification Output:
-```text
-NETWORK        NAME                           PRIORITY  ALLOW
-managementnet  managementnet-allow-icmp-ssh  1000      tcp:22,tcp:3389,icmp
-privatenet     privatenet-allow-icmp-ssh-rdp  1000      icmp,tcp:22,tcp:3389
 ```
 
 ---
@@ -424,25 +343,11 @@ gcloud compute instances describe lifecycle-demo-vm --zone=us-central1-a \
     --format="yaml(status, networkInterfaces[0].networkIP, networkInterfaces[0].accessConfigs)"
 ```
 
-#### Expected Verification Output:
-```yaml
-networkIP: 10.1.0.2
-status: TERMINATED
-```
-
 #### Step 4: Restart VM & Verify Mutated Ephemeral External IP
 ```bash
 gcloud compute instances start lifecycle-demo-vm --zone=us-central1-a
 gcloud compute instances describe lifecycle-demo-vm --zone=us-central1-a \
     --format="yaml(status, networkInterfaces[0].networkIP, networkInterfaces[0].accessConfigs[0].natIP)"
-```
-
-#### Expected Verification Output:
-```yaml
-accessConfigs:
-- natIP: 35.202.88.19
-networkIP: 10.1.0.2
-status: RUNNING
 ```
 
 ---
@@ -460,13 +365,6 @@ gcloud compute addresses create promoted-static-ip \
 gcloud compute addresses describe promoted-static-ip --region=us-central1 --format="yaml(name, address, status)"
 ```
 
-#### Expected Verification Output:
-```yaml
-address: 35.202.88.19
-name: promoted-static-ip
-status: IN_USE
-```
-
 ---
 
 ### 4. Audit & Release Unassigned Static External IPs to Eliminate Surcharge Billing
@@ -480,12 +378,6 @@ gcloud compute addresses list \
 #### How to Verify Configuration Correctness & Release Unassigned IPs:
 ```bash
 gcloud compute addresses delete abandoned-legacy-ip unused-test-ip --region=us-central1 --quiet
-```
-
-#### Expected Verification Output:
-```text
-Deleted [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/addresses/abandoned-legacy-ip].
-Deleted [https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/addresses/unused-test-ip].
 ```
 
 ---
@@ -506,11 +398,6 @@ gcloud compute instances describe private-backend-db --zone=us-central1-a \
     --format="yaml(name, networkInterfaces[0].accessConfigs)"
 ```
 
-#### Expected Verification Output:
-```yaml
-name: private-backend-db
-```
-
 ---
 
 ### 6. Custom Static Internal IP Assignment Within Subnet Range
@@ -529,11 +416,6 @@ gcloud compute instances describe custom-ip-vm --zone=us-central1-a \
     --format="value(networkInterfaces[0].networkIP)"
 ```
 
-#### Expected Verification Output:
-```text
-10.1.0.25
-```
-
 ---
 
 ## Category 7: Bring Your Own IP (BYOIP) & Internal DNS Verification
@@ -549,13 +431,6 @@ gcloud compute public-advertised-prefixes create my-company-byoip-pap \
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute public-advertised-prefixes describe my-company-byoip-pap --format="yaml(name, ipCidrRange, status)"
-```
-
-#### Expected Verification Output:
-```yaml
-ipCidrRange: 198.51.100.0/24
-name: my-company-byoip-pap
-status: INITIAL
 ```
 
 ---
@@ -594,12 +469,6 @@ gcloud compute instances create container-host-vm \
 ```bash
 gcloud compute instances describe container-host-vm --zone=us-central1-a \
     --format="yaml(networkInterfaces[0].aliasIpRanges)"
-```
-
-#### Expected Verification Output:
-```yaml
-aliasIpRanges:
-- ipCidrRange: 10.1.0.64/28
 ```
 
 ---
@@ -647,13 +516,6 @@ gcloud compute routes create route-to-internal-appliance \
 gcloud compute routes describe route-to-internal-appliance --format="yaml(name, destRange, priority, nextHopInstance)"
 ```
 
-#### Expected Verification Output:
-```yaml
-destRange: 172.16.0.0/12
-name: route-to-internal-appliance
-priority: 800
-```
-
 ---
 
 ## Category 11: Advanced Stateful Ingress & Egress Firewall Policies
@@ -691,11 +553,6 @@ gcloud compute networks subnets describe prod-subnet-us-central1 \
     --format="value(privateIpGoogleAccess)"
 ```
 
-#### Expected Verification Output:
-```text
-True
-```
-
 ---
 
 ### 2. Audit Intra-Zone External IP Communication Leaks
@@ -708,11 +565,6 @@ gcloud compute instances list --format="table(name, zone, networkInterfaces[0].n
 ```bash
 # Test internal DNS connectivity to ensure internal communication is used instead of external IPs
 gcloud compute ssh web-frontend-vm-1 --zone=us-central1-a --command="curl -I http://backend-api-vm-2.us-central1-a.c.YOUR_PROJECT.internal"
-```
-
-#### Expected Verification Output:
-```text
-HTTP/1.1 200 OK
 ```
 
 ---
@@ -772,13 +624,6 @@ gcloud compute routes create route-to-onprem \
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute vpn-tunnels describe classic-tunnel-1 --region=us-central1 --format="yaml(status, detailedStatus, peerIp)"
-```
-
-#### Expected Verification Output:
-```yaml
-detailedStatus: Tunnel is up and operating normally.
-peerIp: 203.0.113.5
-status: ESTABLISHED
 ```
 
 ---
@@ -857,21 +702,6 @@ gcloud compute routers add-bgp-peer vpn-cloud-router \
 ```bash
 # Verify BGP session status across both tunnels
 gcloud compute routers get-status vpn-cloud-router --region=us-central1 --format="yaml(bgpPeerStatus)"
-```
-
-#### Expected Verification Output:
-```yaml
-bgpPeerStatus:
-- ipAddress: 169.254.0.1
-  name: bgp-peer-0
-  numLearnedRoutes: 5
-  peerIpAddress: 169.254.0.2
-  state: ESTABLISHED
-- ipAddress: 169.254.1.1
-  name: bgp-peer-1
-  numLearnedRoutes: 5
-  peerIpAddress: 169.254.1.2
-  state: ESTABLISHED
 ```
 
 ---
@@ -1080,12 +910,6 @@ gcloud compute routers add-bgp-peer interconnect-router-uscentral1 \
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute interconnects attachments describe dedicated-vlan-attachment-01 --region=us-central1 --format="yaml(state, operationalStatus)"
-```
-
-#### Expected Verification Output:
-```yaml
-operationalStatus: ACTIVE
-state: ACTIVE
 ```
 
 ---
@@ -1404,46 +1228,6 @@ gcloud compute instances list --filter="name=private-app-server-01" --format="ta
 
 # Test Connectivity inside VM via IAP
 gcloud compute ssh private-app-server-01 --zone=us-central1-a --tunnel-through-iap --command="curl -s https://ifconfig.me && dig +short db.gcd.internal."
-```
-
-#### Expected Verification Output:
-```text
-NAME                     REGION       RANGE        PRIVATE_IP_GOOGLE_ACCESS
-prod-subnet-us-central1  us-central1  10.1.0.0/24  True
-prod-dualstack-subnet    us-central1  10.2.0.0/24  True
-
-NAME                                       DIRECTION  PRIORITY  ACTION  ALLOW           DENY  LOGGING
-gcd-prod-custom-vpc-allow-iap-ssh-rdp      INGRESS    1000      ALLOW   tcp:22,tcp:3389       False
-gcd-prod-custom-vpc-allow-internal-mesh    INGRESS    1000      ALLOW   tcp,udp,icmp          False
-gcd-prod-custom-vpc-allow-health-checks    INGRESS    1000      ALLOW   tcp:80,443,8080       False
-gcd-prod-custom-vpc-allow-egress-web       EGRESS     1000      ALLOW   tcp:80,tcp:443        False
-gcd-prod-custom-vpc-deny-all-ingress-log   INGRESS    65000     DENY                    all   True
-gcd-prod-custom-vpc-deny-all-egress-log    EGRESS     65000     DENY                    all   True
-
-enableDynamicPortAllocation: true
-enableLogging: true
-endpointTypes:
-- ENDPOINT_TYPE_VM
-icmpIdleTimeoutSec: 30
-logConfig:
-  enable: true
-  filter: ALL
-maxPortsPerVm: 1024
-minPortsPerVm: 64
-name: gcd-nat-gateway-uscentral1
-natIpAllocateOption: MANUAL_ONLY
-natIps:
-- https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/regions/us-central1/addresses/gcd-nat-static-ip-uscentral1
-sourceSubnetworkIpRangesToNat: ALL_SUBNETWORKS_ALL_IP_RANGES
-tcpEstablishedIdleTimeoutSec: 1200
-tcpTransitoryIdleTimeoutSec: 30
-udpIdleTimeoutSec: 30
-
-NAME                  ZONE           STATUS   INTERNAL_IP
-private-app-server-01  us-central1-a  RUNNING  10.1.0.10
-
-34.122.10.55
-10.1.0.10
 ```
 
 

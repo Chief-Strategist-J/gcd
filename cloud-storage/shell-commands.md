@@ -53,18 +53,6 @@ gcloud storage buckets describe gs://${BUCKET_NAME} \
     --format="yaml(name, location, locationType, storageClass, iamConfiguration)"
 ```
 
-#### Expected Verification Output:
-```yaml
-iamConfiguration:
-  publicAccessPrevention: enforced
-  uniformBucketLevelAccess:
-    enabled: true
-location: US-CENTRAL1
-locationType: region
-name: YOUR_GLOBALLY_UNIQUE_BUCKET_NAME
-storageClass: STANDARD
-```
-
 ---
 
 ### 2. Update Bucket Default Storage Class

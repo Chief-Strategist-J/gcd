@@ -43,12 +43,6 @@ DOCKER_BUILDKIT=1 docker build \
 docker images us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0
 ```
 
-#### Expected Verification Output:
-```text
-REPOSITORY                                                   TAG       IMAGE ID       CREATED         SIZE
-us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app   v2.4.0    c4f82d19b7a0   10 seconds ago  22.4MB
-```
-
 ---
 
 ### 2. Vulnerability Scan Verification (`trivy`)
@@ -90,12 +84,6 @@ docker run -d \
 docker ps --filter "name=web-app-container" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 ```
 
-#### Expected Verification Output:
-```text
-NAMES               STATUS          PORTS
-web-app-container   Up 10 seconds   0.0.0.0:8080->8080/tcp
-```
-
 ---
 
 ### 4. GCP Artifact Registry Authentication & Container Push Generator (`docker push`)
@@ -113,12 +101,6 @@ docker push us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud artifacts docker images list us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo
-```
-
-#### Expected Verification Output:
-```text
-IMAGE                                                      DIGEST                                    TAGS
-us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app  sha256:a1b2c3d4e5f6789012345...          v2.4.0
 ```
 
 ---
@@ -141,15 +123,6 @@ docker buildx build \
 docker buildx imagetools inspect us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0
 ```
 
-#### Expected Verification Output:
-```text
-Name:      us-central1-docker.pkg.dev/YOUR_PROJECT/app-repo/web-app:v2.4.0
-MediaType: application/vnd.docker.distribution.manifest.list.v2+json
-Manifests:
-  Platform: linux/amd64
-  Platform: linux/arm64
-```
-
 ---
 
 ## Category 2: Image & Container Resource Memory Monitoring
@@ -164,11 +137,6 @@ kubectl top pods -n production --sort-by=memory
 ```bash
 # Compare current usage (142Mi) against configured requests/limits
 kubectl get pod web-app-74b89-x8q2z -n production -o jsonpath='{.spec.containers[0].resources}'
-```
-
-#### Expected Verification Output:
-```text
-{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}
 ```
 * **Correctness Analysis**: Active usage (`142Mi`) exceeds `requests` (`128Mi`) and remains safely under `limits` (`512Mi`). Configuration is optimal and not at risk of `OOMKilled`.
 
@@ -209,11 +177,6 @@ kubectl apply -f ./deployment.yaml -n production
 ```bash
 kubectl get deployment web-app -n production
 ```
-#### Expected Verification Output:
-```text
-NAME      READY   UP-TO-DATE   AVAILABLE   AGE
-web-app   3/3     3            3           25s
-```
 * **What to Read**: `READY` must show `3/3` matching `AVAILABLE` `3`. If `0/3`, pods are failing health probes.
 
 ---
@@ -238,12 +201,6 @@ kubectl rollout restart deployment/web-app -n production
 ```bash
 kubectl rollout status deployment/web-app -n production
 ```
-#### Expected Verification Output:
-```text
-Waiting for deployment "web-app" rollout to finish: 1 out of 3 new replicas have been updated...
-Waiting for deployment "web-app" rollout to finish: 2 out of 3 new replicas have been updated...
-deployment "web-app" successfully rolled out
-```
 
 ---
 
@@ -263,11 +220,6 @@ kubectl cordon worker-node-01
 #### How to Verify Node Correctness:
 ```bash
 kubectl get node worker-node-01
-```
-#### Expected Verification Output:
-```text
-NAME             STATUS                     ROLES    AGE   VERSION
-worker-node-01   Ready,SchedulingDisabled   <none>   45d   v1.36.2
 ```
 
 ---
@@ -378,11 +330,6 @@ kubectl create ingress web-ingress \
 kubectl apply -f ./deployment.yaml --dry-run=server
 ```
 
-#### Expected Verification Output:
-```text
-deployment.apps/web-api created (server dry run)
-```
-
 ---
 
 ## Category 6: Advanced Output Formatting & JSONPath Queries
@@ -416,12 +363,6 @@ kubectl set image deployment/web-app web=nginx:1.26-alpine -n production --recor
 # Check rollout status
 kubectl rollout status deployment/web-app -n production
 ```
-#### Expected Verification Output:
-```text
-Waiting for deployment "web-app" rollout to finish: 1 of 3 updated replicas are available...
-Waiting for deployment "web-app" rollout to finish: 2 of 3 updated replicas are available...
-deployment "web-app" successfully rolled out
-```
 
 ---
 
@@ -447,12 +388,6 @@ kubectl create secret generic app-secrets \
 ```bash
 kubectl get secret app-secrets -n production -o json | jq '.data | map_values(@base64d)'
 ```
-#### Expected Verification Output:
-```json
-{
-  "DB_PASS": "Secret123!"
-}
-```
 
 ---
 
@@ -477,11 +412,6 @@ kubectl expose deployment web-app --type=LoadBalancer --port=80 --target-port=80
 ```bash
 kubectl get service web-service -n production
 ```
-#### Expected Verification Output:
-```text
-NAME          TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)        AGE
-web-service   LoadBalancer   10.96.14.202   35.202.110.42   80:31920/TCP   45s
-```
 * **What to Read**: Verify `EXTERNAL-IP` changes from `<pending>` to valid IP (`35.202.110.42`).
 
 ---
@@ -491,11 +421,6 @@ web-service   LoadBalancer   10.96.14.202   35.202.110.42   80:31920/TCP   45s
 ```bash
 kubectl get endpoints web-service -n production
 ```
-#### Expected Verification Output:
-```text
-NAME          ENDPOINTS                                        AGE
-web-service   10.244.1.15:8080,10.244.2.20:8080,10.244.2.21:8080   1m
-```
 * **Correctness Analysis**: IP addresses listed in `ENDPOINTS` match active Pod IPs. If `<none>`, readiness probes are failing.
 
 ---
@@ -504,14 +429,6 @@ web-service   10.244.1.15:8080,10.244.2.20:8080,10.244.2.21:8080   1m
 
 ```bash
 kubectl exec -it pod/web-app-74b89-x8q2z -n production -- nslookup postgres-service.production.svc.cluster.local
-```
-#### Expected Verification Output:
-```text
-Server:         10.96.0.10
-Address:        10.96.0.10#53
-
-Name:   postgres-service.production.svc.cluster.local
-Address: 10.96.42.180
 ```
 
 ---
@@ -584,10 +501,6 @@ kubectl debug -it pod/web-app-74b89-x8q2z -n production \
 
 ```bash
 kubectl auth can-i delete secrets -n production --as=system:serviceaccount:production:app-runner-sa
-```
-#### Expected Verification Output:
-```text
-yes
 ```
 *(If unauthorized: returns `no`)*
 

@@ -3,7 +3,7 @@
 This document is an exhaustive operational manual for **GCP Core Configuration, Project Lifecycle, Authentication, and Organization Governance**.
 
 Every command snippet includes:
-1. **Command to Execute**3. **How to Verify Configuration Correctness & Expected Verification Output**
+1. **Command to Execute**3. **How to Verify Configuration Correctness**
 
 ---
 
@@ -31,16 +31,6 @@ gcloud auth login --launch-browser
 gcloud auth list
 ```
 
-#### Expected Verification Output:
-```text
-  Credentialed Accounts
-ACTIVE  ACCOUNT
-*       admin@company.com
-
-To set the active account, run:
-    $ gcloud config set account `ACCOUNT`
-```
-
 ---
 
 ### 2. Generate Application Default Credentials (ADC) for Code SDKs
@@ -53,11 +43,6 @@ gcloud auth application-default login
 ```bash
 # Print active ADC account details from credentials JSON file
 gcloud auth application-default print-access-token --format="value(token)" | cut -c 1-20
-```
-
-#### Expected Verification Output:
-```text
-ya29.a0AfB_byC1a9zK...
 ```
 
 ---
@@ -202,13 +187,6 @@ gcloud config set compute/zone us-central1-a
 gcloud config configurations list
 ```
 
-#### Expected Verification Output:
-```text
-NAME              IS_ACTIVE  ACCOUNT            PROJECT                 COMPUTE_DEFAULT_ZONE  COMPUTE_DEFAULT_REGION
-default           False      dev@company.com    dev-app-123             us-east1-b            us-east1
-prod-environment  True       admin@company.com  prod-core-api-01-9921   us-central1-a         us-central1
-```
-
 ---
 
 ## Category 4: Project Lifecycle & Billing Account Linkage
@@ -227,16 +205,6 @@ gcloud projects create gcd-prod-analytics-8812 \
 gcloud projects describe gcd-prod-analytics-8812 --format="yaml(projectId, name, lifecycleState, parent)"
 ```
 
-#### Expected Verification Output:
-```yaml
-lifecycleState: ACTIVE
-name: GCD Production Analytics
-parent:
-  id: '481920491823'
-  type: folder
-projectId: gcd-prod-analytics-8812
-```
-
 ---
 
 ### 2. Link Billing Account to Project
@@ -249,11 +217,6 @@ gcloud billing projects link gcd-prod-analytics-8812 \
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud billing projects describe gcd-prod-analytics-8812 --format="value(billingEnabled)"
-```
-
-#### Expected Verification Output:
-```text
-True
 ```
 
 ---
@@ -378,13 +341,6 @@ gcloud resource-manager org-policies enable-enforce \
 gcloud resource-manager org-policies describe \
     constraints/compute.disableSerialPortAccess \
     --organization=981273918234
-```
-
-#### Expected Verification Output:
-```yaml
-booleanPolicy:
-  enforced: true
-constraint: constraints/compute.disableSerialPortAccess
 ```
 
 ---
@@ -646,15 +602,6 @@ gcloud services enable \
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud services list --enabled --project=gcd-prod-analytics-8812 --filter="NAME:(compute container bigquery storage)"
-```
-
-#### Expected Verification Output:
-```text
-NAME                    TITLE
-bigquery.googleapis.com  BigQuery API
-compute.googleapis.com   Compute Engine API
-container.googleapis.com Kubernetes Engine API
-storage.googleapis.com   Cloud Storage API
 ```
 
 ---

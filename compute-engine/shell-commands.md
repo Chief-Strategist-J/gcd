@@ -3,7 +3,7 @@
 This document is an exhaustive operational reference for the complete Google Compute Engine (GCE) Virtual Machine lifecycle. 
 
 Every section provides:
-1. **Command to Execute**3. **How to Verify Configuration Correctness & Expected Verification Output**
+1. **Command to Execute**3. **How to Verify Configuration Correctness**
 
 ---
 
@@ -47,13 +47,6 @@ gcloud compute machine-images create gold-image-v2-4 \
 gcloud compute machine-images describe gold-image-v2-4 --format="yaml(name, status, totalStorageBytes)"
 ```
 
-#### Expected Verification Output:
-```yaml
-name: gold-image-v2-4
-status: READY
-totalStorageBytes: '4891283456'
-```
-
 ---
 
 ## Phase 2: Configuring Instance Templates, VPC Subnets & Metadata
@@ -78,17 +71,6 @@ gcloud compute instance-templates create prod-web-template-v2 \
 ```bash
 gcloud compute instance-templates describe prod-web-template-v2 \
     --format="yaml(name, properties.machineType, properties.tags)"
-```
-
-#### Expected Verification Output:
-```yaml
-name: prod-web-template-v2
-properties:
-  machineType: n2-standard-4
-  tags:
-    items:
-    - http-server
-    - https-server
 ```
 
 ---
@@ -204,15 +186,6 @@ gcloud compute instances describe spot-batch-worker \
     --format="yaml(name, scheduling.provisioningModel, scheduling.instanceTerminationAction, scheduling.onHostMaintenance)"
 ```
 
-##### Expected Verification Output:
-```yaml
-name: spot-batch-worker
-scheduling:
-  instanceTerminationAction: STOP
-  onHostMaintenance: TERMINATE
-  provisioningModel: SPOT
-```
-
 ---
 
 #### Part B: Provisioning Sole-Tenant Dedicated Node Groups (PCI-DSS / BYOL Isolation)
@@ -264,14 +237,6 @@ gcloud compute instances describe secure-bastion-vm \
     --format="yaml(shieldedInstanceConfig)"
 ```
 
-##### Expected Verification Output:
-```yaml
-shieldedInstanceConfig:
-  enableIntegrityMonitoring: true
-  enableSecureBoot: true
-  enableVtpm: true
-```
-
 ---
 
 #### Part D: Provisioning Confidential VMs (Hardware RAM Encryption In-Use via AMD SEV)
@@ -291,13 +256,6 @@ gcloud compute instances create confidential-db-vm \
 gcloud compute instances describe confidential-db-vm \
     --zone=us-central1-a \
     --format="yaml(name, confidentialInstanceConfig)"
-```
-
-##### Expected Verification Output:
-```yaml
-confidentialInstanceConfig:
-  enableConfidentialCompute: true
-name: confidential-db-vm
 ```
 
 ---
@@ -595,14 +553,6 @@ gcloud compute instance-groups managed create prod-web-mig \
 gcloud compute instance-groups managed list-instances prod-web-mig --region=us-central1
 ```
 
-#### Expected Verification Output:
-```text
-NAME               ZONE           STATUS   HEALTH_STATE  ACTION  INSTANCE_TEMPLATE
-prod-web-mig-a1b2  us-central1-a  RUNNING  HEALTHY       NONE    prod-web-template-v2
-prod-web-mig-c3d4  us-central1-b  RUNNING  HEALTHY       NONE    prod-web-template-v2
-prod-web-mig-e5f6  us-central1-c  RUNNING  HEALTHY       NONE    prod-web-template-v2
-```
-
 ---
 
 ### 2. Perform Zero-Downtime Rolling Update of MIG
@@ -618,14 +568,6 @@ gcloud compute instance-groups managed rolling-action start-update prod-web-mig 
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute instance-groups managed describe prod-web-mig --region=us-central1 --format="yaml(status)"
-```
-
-#### Expected Verification Output:
-```yaml
-status:
-  isStable: true
-  versionTarget:
-    isReached: true
 ```
 
 ---
@@ -646,17 +588,6 @@ gcloud compute instance-groups managed set-autoscaling prod-web-mig \
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute instance-groups managed describe-autoscaler prod-web-mig --region=us-central1
-```
-
-#### Expected Verification Output:
-```yaml
-autoscalingPolicy:
-  coolDownPeriodSec: 90
-  cpuUtilization:
-    utilizationTarget: 0.75
-  maxNumReplicas: 20
-  minNumReplicas: 3
-status: ACTIVE
 ```
 
 ---
@@ -682,11 +613,6 @@ gcloud compute instances delete prod-web-vm1 --zone=us-central1-a --quiet
 #### How to Verify Configuration Correctness:
 ```bash
 gcloud compute instances describe prod-web-vm1 --zone=us-central1-a --format="value(status)"
-```
-
-#### Expected Verification Output:
-```text
-TERMINATED
 ```
 
 ---
@@ -730,13 +656,6 @@ gcloud compute instances start utility-cm --zone=us-central1-a
 gcloud compute instances describe utility-cm \
     --zone=us-central1-a \
     --format="yaml(name, status, machineType)"
-```
-
-#### Expected Verification Output:
-```yaml
-machineType: https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT/zones/us-central1-a/machineTypes/custom-4-16384
-name: utility-cm
-status: RUNNING
 ```
 
 ---

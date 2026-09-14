@@ -3,7 +3,7 @@
 This document is an operational reference manual for the BigQuery CLI tool (`bq`).
 
 Every section provides:
-1. **Command to Execute**3. **How to Verify Configuration Correctness & Expected Verification Output**
+1. **Command to Execute**3. **How to Verify Configuration Correctness**
 
 ---
 
@@ -34,18 +34,6 @@ bq --location=US mk \
 bq show --format=prettyjson YOUR_PROJECT_ID:prod_analytics
 ```
 
-#### Expected Verification Output:
-```json
-{
-  "datasetReference": {
-    "datasetId": "prod_analytics",
-    "projectId": "YOUR_PROJECT_ID"
-  },
-  "defaultTableExpirationMs": "3600000",
-  "location": "US"
-}
-```
-
 ---
 
 ### 2. Create Partitioned & Clustered Table with Schema
@@ -66,20 +54,6 @@ bq mk \
 bq show --format=prettyjson YOUR_PROJECT_ID:prod_analytics.user_transactions
 ```
 
-#### Expected Verification Output:
-```json
-{
-  "clustering": {
-    "fields": ["region", "user_id"]
-  },
-  "requirePartitionFilter": true,
-  "timePartitioning": {
-    "field": "transaction_date",
-    "type": "DAY"
-  }
-}
-```
-
 ---
 
 ## Category 2: High-Performance Data Loading (`bq load` Parquet/JSON/CSV)
@@ -97,15 +71,6 @@ bq load \
 #### How to Verify Configuration Correctness:
 ```bash
 bq query --use_legacy_sql=false 'SELECT COUNT(*) AS total_rows FROM `prod_analytics.user_transactions` WHERE transaction_date = "2026-09-12"'
-```
-
-#### Expected Verification Output:
-```text
-+------------+
-| total_rows |
-+------------+
-|    1450201 |
-+------------+
 ```
 
 ---
@@ -131,11 +96,6 @@ bq query \
     'SELECT region, SUM(amount) AS total FROM `prod_analytics.user_transactions` WHERE transaction_date = "2026-09-12" GROUP BY region'
 ```
 
-#### Expected Verification Output:
-```text
-Waiting on bqjob_r21b8c_0000018f929... (2s) Current status: DONE
-```
-
 ---
 
 ## Category 4: Data Export & Cloud Storage Extraction (`bq extract`)
@@ -155,11 +115,6 @@ bq extract \
 gcloud storage ls "gs://my-prod-data-bucket/exports/summary-*.csv.gz"
 ```
 
-#### Expected Verification Output:
-```text
-gs://my-prod-data-bucket/exports/summary-000000000000.csv.gz
-```
-
 ---
 
 ## Category 5: IAM Security, Dataset Access Controls & Encryption
@@ -168,20 +123,6 @@ gs://my-prod-data-bucket/exports/summary-000000000000.csv.gz
 
 ```bash
 bq show --format=prettyjson YOUR_PROJECT_ID:prod_analytics | grep -A 10 "access"
-```
-
-#### Expected Verification Output:
-```json
-  "access": [
-    {
-      "role": "WRITER",
-      "userByEmail": "data-pipeline-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com"
-    },
-    {
-      "role": "OWNER",
-      "specialGroup": "projectOwners"
-    }
-  ]
 ```
 
 ---

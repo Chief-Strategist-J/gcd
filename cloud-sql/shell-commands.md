@@ -77,18 +77,6 @@ gcloud sql instances describe ${INSTANCE_NAME}-mysql \
     --format="yaml(name, state, databaseVersion, settings.tier, settings.availabilityType, gceZone, secondaryGceZone)"
 ```
 
-#### Expected Verification Output:
-```yaml
-databaseVersion: MYSQL_8_0
-gceZone: us-central1-a
-name: YOUR_INSTANCE_NAME-mysql
-secondaryGceZone: us-central1-b
-settings:
-  availabilityType: REGIONAL
-  tier: db-custom-4-16384
-state: RUNNABLE
-```
-
 ---
 
 ## Category 2: Database & Native User Administration
@@ -154,11 +142,6 @@ gcloud sql instances create ${INSTANCE_NAME}-private \
 gcloud sql instances describe ${INSTANCE_NAME}-private --format="value(ipAddresses[0].ipAddress)"
 ```
 
-#### Expected Verification Output:
-```text
-10.128.0.5
-```
-
 ---
 
 ### 2. Cloud SQL Auth Proxy (Recommended for Cross-Region / External Connections)
@@ -203,14 +186,6 @@ gcloud sql instances failover ${INSTANCE_NAME}-mysql --project=${PROJECT_ID} --q
 # 2. Monitor Failover State & Primary Zone Switch
 gcloud sql instances describe ${INSTANCE_NAME}-mysql \
     --format="yaml(name, state, gceZone, secondaryGceZone)"
-```
-
-#### Expected Verification Output:
-```yaml
-gceZone: us-central1-b
-name: YOUR_INSTANCE_NAME-mysql
-secondaryGceZone: us-central1-a
-state: RUNNABLE
 ```
 
 ---
@@ -347,17 +322,6 @@ gcloud sql databases create wordpress --instance=${INSTANCE_NAME}
 gcloud sql instances describe ${INSTANCE_NAME} --format="yaml(name, state, ipAddresses)"
 ```
 
-#### Expected Verification Output:
-```yaml
-ipAddresses:
-- ipAddress: 35.225.x.x
-  type: PRIMARY
-- ipAddress: 10.128.0.5
-  type: PRIVATE
-name: wordpress-db
-state: RUNNABLE
-```
-
 ---
 
 ### Task 2. Download & Run Cloud SQL Auth Proxy in Background
@@ -404,12 +368,6 @@ echo "Open Browser to: http://${PROXY_PUBLIC_IP}"
 curl -I "http://${PROXY_PUBLIC_IP}"
 ```
 
-#### Expected Verification Output:
-```text
-HTTP/1.1 200 OK
-Content-Type: text/html; charset=UTF-8
-```
-
 ---
 
 ### Task 4. Connect Application Directly via Cloud SQL Private IP Address
@@ -433,13 +391,6 @@ echo "Open Browser to: http://${APP2_PUBLIC_IP}"
 
 # 4. Verify Application Loading via Direct Private IP
 curl -I "http://${APP2_PUBLIC_IP}"
-```
-
-#### Expected Verification Output:
-```text
-Cloud SQL Private IP: 10.128.0.5
-HTTP/1.1 200 OK
-Content-Type: text/html; charset=UTF-8
 ```
 
 ---
@@ -499,13 +450,6 @@ gcloud alloydb backups create alloydb-backup-01 \
 ```bash
 gcloud alloydb instances list --cluster=${CLUSTER_ID} --region=${REGION} \
     --format="table(name.basename(), instanceType, state, ipAddress)"
-```
-
-#### Expected Verification Output:
-```text
-NAME                     INSTANCE_TYPE  STATE     IP_ADDRESS
-prod-alloydb-primary     PRIMARY        READY     10.128.0.20
-prod-alloydb-read-pool   READ_POOL      READY     10.128.0.21
 ```
 
 
