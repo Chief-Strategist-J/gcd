@@ -470,3 +470,227 @@ graph TD
 2. **Enable Private Google Access**: Route traffic to Google Cloud APIs (Storage, BigQuery, KMS) internally via Private Google Access for **$0.00/GB egress cost**.
 3. **Release Unassigned Static IPs**: Unassigned static external IPs incur a hourly surcharge to prevent public IPv4 address hoarding.
 4. **Locate Microservices in Same Zone**: High-throughput inter-service traffic should be co-located within the same availability zone to avoid inter-zone network fees ($0.01/GB each way).
+
+---
+
+### O. Cloud VPN Architecture & High-Availability SLA Topologies
+
+Google Cloud VPN securely connects on-premises networks or other cloud providers to your GCP Virtual Private Cloud (VPC) over IPsec tunnels.
+
+#### 1. Classic VPN Architecture (Single Gateway, Static Route, 99.9% SLA, MTU <= 1460 Bytes)
+
+```mermaid
+graph TD
+    subgraph GCP_PROJECT["GCP Project Scope"]
+        subgraph VPC["Custom VPC Network: gcd-prod-custom-vpc"]
+            SUBNET_US["Subnet us-central1 (10.1.0.0/16)"]
+            STATIC_ROUTE["Static Route: 192.168.1.0/24<br/>Next Hop: classic-tunnel-1"]
+        end
+        CLASSIC_GW["Classic Target VPN Gateway<br/>(Target Gateway: classic-vpn-gw)<br/>External IP: 35.200.10.5<br/>SLA: 99.9%"]
+        FW_RULES["ESP, UDP 500, UDP 4500 Forwarding Rules"]
+    end
+
+    subgraph ON_PREM["On-Premises Network (192.168.1.0/24)"]
+        ONPREM_GW["On-Premises Peer VPN Gateway<br/>External IP: 203.0.113.5<br/>MTU <= 1460 bytes"]
+    end
+
+    CLASSIC_GW <-->|Single IPsec Tunnel<br/>IKEv2 / Shared Secret<br/>MTU <= 1460 bytes| ONPREM_GW
+    STATIC_ROUTE -.-> CLASSIC_GW
+```
+
+---
+
+#### 2. High Availability (HA) VPN Architecture (99.99% SLA, Dual Interfaces, Cloud Router BGP)
+
+HA VPN uses two interfaces (`if0` and `if1`), each assigned an automatically allocated regional external IP address from distinct pools to guarantee a **99.99% SLA**.
+
+```mermaid
+graph TD
+    subgraph GCP_VPC["GCP Custom VPC: gcd-prod-custom-vpc"]
+        subgraph REGION_US["Region: us-central1"]
+            subgraph HA_VPN["HA VPN Gateway: ha-vpn-gw-01 (SLA: 99.99%)"]
+                IF0["Interface 0 (if0)<br/>Auto External IP: 35.200.1.1"]
+                IF1["Interface 1 (if1)<br/>Auto External IP: 34.100.2.2"]
+            end
+
+            subgraph ROUTER["Cloud Router: vpn-cloud-router (ASN 65001)"]
+                BGP_IF0["BGP Interface 0<br/>Link-Local: 169.254.0.1/30"]
+                BGP_IF1["BGP Interface 1<br/>Link-Local: 169.254.1.1/30"]
+            end
+        end
+    end
+
+    subgraph ON_PREM["On-Premises Data Center"]
+        subgraph PEER_GW["External Peer Gateway: onprem-peer-gateway (TWO_IPS_REDUNDANCY)"]
+            PEER_DEV0["Peer Device 0<br/>IP: 203.0.113.10<br/>BGP ASN 65002<br/>Link-Local: 169.254.0.2/30"]
+            PEER_DEV1["Peer Device 1<br/>IP: 203.0.113.11<br/>BGP ASN 65002<br/>Link-Local: 169.254.1.2/30"]
+        end
+    end
+
+    IF0 <-->|HA Tunnel 0 (IPsec)<br/>BGP Peer Session 0| PEER_DEV0
+    IF1 <-->|HA Tunnel 1 (IPsec)<br/>BGP Peer Session 1| PEER_DEV1
+
+    style HA_VPN fill:#4285F4,color:#fff
+    style ROUTER fill:#34A853,color:#fff
+    style PEER_GW fill:#0F172A,color:#fff,stroke:#38BDF8
+```
+
+---
+
+#### 3. HA VPN to AWS Interop Topology (4 Tunnels, ECMP Load Balancing)
+
+```mermaid
+graph TD
+    subgraph GCP_CLOUD["Google Cloud Platform (GCP)"]
+        subgraph HA_GW["GCP HA VPN Gateway"]
+            GCP_IF0["Interface 0 (if0)"]
+            GCP_IF1["Interface 1 (if1)"]
+        end
+        CLOUD_ROUTER["Cloud Router (BGP)"]
+    end
+
+    subgraph AWS_CLOUD["Amazon Web Services (AWS)"]
+        subgraph AWS_VGW["AWS Transit / Virtual Private Gateway"]
+            AWS_IF0["VGW Endpoint 1 (52.93.1.10)"]
+            AWS_IF1["VGW Endpoint 2 (52.93.1.11)"]
+            AWS_IF2["VGW Endpoint 3 (52.93.2.10)"]
+            AWS_IF3["VGW Endpoint 4 (52.93.2.11)"]
+        end
+    end
+
+    GCP_IF0 <-->|Tunnel 0| AWS_IF0
+    GCP_IF0 <-->|Tunnel 1| AWS_IF1
+    GCP_IF1 <-->|Tunnel 2| AWS_IF2
+    GCP_IF1 <-->|Tunnel 3| AWS_IF3
+
+    style HA_GW fill:#4285F4,color:#fff
+    style AWS_VGW fill:#FF9900,color:#fff
+```
+
+---
+
+#### 4. GCP VPC-to-VPC Interconnect via HA VPN
+
+```mermaid
+graph TD
+    subgraph VPC_A["GCP VPC Network A: gcd-prod-custom-vpc"]
+        HA_GW_A["HA VPN Gateway A<br/>(ha-gw-vpc-a)"]
+        ROUTER_A["Cloud Router A<br/>ASN 65010"]
+        HA_GW_A_IF0["Interface 0"]
+        HA_GW_A_IF1["Interface 1"]
+    end
+
+    subgraph VPC_B["GCP VPC Network B: gcd-dev-auto-vpc"]
+        HA_GW_B["HA VPN Gateway B<br/>(ha-gw-vpc-b)"]
+        ROUTER_B["Cloud Router B<br/>ASN 65020"]
+        HA_GW_B_IF0["Interface 0"]
+        HA_GW_B_IF1["Interface 1"]
+    end
+
+    HA_GW_A_IF0 <-->|HA Tunnel 0 (IPsec + BGP)| HA_GW_B_IF0
+    HA_GW_A_IF1 <-->|HA Tunnel 1 (IPsec + BGP)| HA_GW_B_IF1
+
+    style VPC_A fill:#1E293B,color:#fff,stroke:#38BDF8
+    style VPC_B fill:#1E1B4B,color:#fff,stroke:#818CF8
+```
+
+---
+
+#### 5. BGP Dynamic Route Propagation Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant GCP_VM as Private VM (10.1.0.2)
+    participant CR as Cloud Router (ASN 65001)
+    participant HA_GW as HA VPN Gateway (35.200.1.1)
+    participant ONPREM_GW as On-Prem BGP Router (203.0.113.10)
+
+    CR->>ONPREM_GW: Establish BGP Session over Link-Local IP (169.254.0.1 <-> 169.254.0.2)
+    ONPREM_GW-->>CR: BGP Open Confirm & Keepalive (ASN 65002)
+    CR->>ONPREM_GW: BGP UPDATE: Advertise GCP Subnet 10.1.0.0/16
+    ONPREM_GW->>CR: BGP UPDATE: Advertise On-Prem Subnets (192.168.1.0/24 & 10.0.30.0/24)
+    CR->>CR: Dynamically populate VPC Routing Table
+    GCP_VM->>HA_GW: Packet destined to 10.0.30.5
+    HA_GW->>ONPREM_GW: Encrypt IPsec Packet -> Send via HA Tunnel 0
+    ONPREM_GW-->>GCP_VM: Decrypt & Route to On-Prem Server
+```
+
+---
+
+### P. Multi-Project Network Sharing Architecture (Shared VPC vs VPC Network Peering)
+
+Google Cloud provides two distinct architectures for sharing networks across GCP projects: **Shared VPC** (Centralized Governance within an Organization) and **VPC Network Peering** (Decentralized Governance across Projects or Organizations).
+
+#### 1. Shared VPC Architecture (Centralized Administrative Model)
+
+Shared VPC allows an organization to centralize network administration (subnets, routes, firewall rules) in a single **Host Project**, while delegating application instance management to separate **Service Projects**.
+
+```mermaid
+graph TD
+    subgraph ORG["GCP Organization Boundary (Single Org Scope)"]
+        subgraph HOST_PROJ["Host Project: prod-net-host-9921"]
+            NET_ADMIN["Central Network Admin<br/>Controls Subnets, Firewalls & Routes"]
+            subgraph SHARED_VPC["Shared VPC Network: prod-shared-vpc"]
+                SUBNET_APP["App Subnet: 10.10.10.0/24<br/>(us-central1)"]
+                SUBNET_DATA["Data Subnet: 10.10.20.0/24<br/>(us-central1)"]
+            end
+        end
+
+        subgraph SERVICE_PROJ_1["Service Project: prod-app-service-8812"]
+            SERVICE_ADMIN_1["Service Project Admin 1<br/>Manages VM Instances Only"]
+            VM_APP["App VM Instance<br/>IP: 10.10.10.5<br/>Bound to Host App Subnet"]
+        end
+
+        subgraph SERVICE_PROJ_2["Service Project: prod-data-service-7734"]
+            SERVICE_ADMIN_2["Service Project Admin 2<br/>Manages Database Instances Only"]
+            VM_DB["Database VM Instance<br/>IP: 10.10.20.8<br/>Bound to Host Data Subnet"]
+        end
+    end
+
+    NET_ADMIN -.->|Manages| SHARED_VPC
+    SERVICE_ADMIN_1 -.->|Provisions VM into| SUBNET_APP
+    SERVICE_ADMIN_2 -.->|Provisions VM into| SUBNET_DATA
+    VM_APP <-->|Private Internal IP Communication| VM_DB
+
+    style HOST_PROJ fill:#1E293B,color:#fff,stroke:#38BDF8
+    style SERVICE_PROJ_1 fill:#0F172A,color:#fff,stroke:#34A853
+    style SERVICE_PROJ_2 fill:#0F172A,color:#fff,stroke:#818CF8
+```
+
+---
+
+#### 2. VPC Network Peering Architecture (Decentralized Cross-Organization Model)
+
+VPC Network Peering connects two independent VPC networks privately. Each network retains its own Network Admin, independent firewall rules, and global routing table.
+
+```mermaid
+graph TD
+    subgraph ORG_A["Organization A (Consumer Scope)"]
+        subgraph PROJ_A["Consumer Project: consumer-app-01"]
+            ADMIN_A["Consumer Network Admin"]
+            subgraph VPC_A["Consumer VPC Network: consumer-vpc"]
+                VM_A["Consumer VM<br/>IP: 10.1.0.2"]
+            end
+        end
+    end
+
+    subgraph ORG_B["Organization B (Producer Scope)"]
+        subgraph PROJ_B["Producer Project: producer-service-02"]
+            ADMIN_B["Producer Network Admin"]
+            subgraph VPC_B["Producer VPC Network: producer-vpc"]
+                VM_B["Producer Service VM<br/>IP: 192.168.10.5"]
+            end
+        end
+    end
+
+    ADMIN_A -->|1. Create Peering: consumer-to-producer| PEERING_LINK
+    ADMIN_B -->|2. Create Peering: producer-to-consumer| PEERING_LINK
+    PEERING_LINK["Bi-Directional VPC Peering Handshake<br/>(State: ACTIVE)"] <-->|Private Internal IP Communication over Google SDN| VM_A
+    PEERING_LINK <-->|Zero Latency Penalty / Zero Public IP Exposure| VM_B
+
+    style ORG_A fill:#1E293B,color:#fff,stroke:#38BDF8
+    style ORG_B fill:#1E1B4B,color:#fff,stroke:#818CF8
+    style PEERING_LINK fill:#34A853,color:#fff
+```
+

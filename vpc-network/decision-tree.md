@@ -160,4 +160,79 @@ flowchart TD
     style PACKET_LOSS fill:#EA4335,color:#fff
     style VPC_PEERING fill:#4285F4,color:#fff
 ```
+
+---
+
+## 8. Hybrid Connectivity & Interconnect Selection Decision Tree
+
+```mermaid
+flowchart TD
+    HYBRID_START["Evaluate Hybrid & Cross-Cloud Connectivity Requirements"] --> TARGET_DEST{"What type of resources are you connecting to?"}
+
+    TARGET_DEST -- "Google Public Services (Workspace, YouTube, Cloud APIs)" --> PEERING_TYPE{"Can you meet Google at an Edge PoP & satisfy Direct Peering requirements?"}
+    PEERING_TYPE -- "Yes (Meets 10G link & BGP requirements)" --> DIRECT_PEERING["Direct Peering<br/>- Direct BGP at Google Edge PoP<br/>- Access to Google Public IPs<br/>- No SLA"]
+    PEERING_TYPE -- "No (Connect via Telco Partner)" --> CARRIER_PEERING["Carrier Peering<br/>- Access Google Public IPs via Service Provider<br/>- No SLA"]
+
+    TARGET_DEST -- "Another Cloud Provider (AWS, Azure, OCI, Alibaba)" --> CROSS_CLOUD_REQ{"Do you require high-bandwidth dedicated multi-cloud connectivity?"}
+    CROSS_CLOUD_REQ -- "Yes (10 Gbps or 100 Gbps dedicated ports)" --> CROSS_CLOUD["Cross-Cloud Interconnect<br/>- Dedicated physical ports to AWS/Azure/OCI<br/>- Google manages link up to partner cloud border"]
+    CROSS_CLOUD_REQ -- "No (Low bandwidth / Managed encryption)" --> CLOUD_VPN_CROSS["Cloud VPN over Public Internet<br/>- 1.5 Gbps per tunnel<br/>- Easy IPsec setup"]
+
+    TARGET_DEST -- "On-Premises Data Center to VPC (Internal RFC 1918 IPs)" --> MEET_COLO{"Can your data center physically meet Google in a supported colocation facility?"}
+    
+    MEET_COLO -- "Yes (In Colocation Facility)" --> BANDWIDTH_ENCRYPT{"What is your bandwidth & encryption requirement?"}
+    BANDWIDTH_ENCRYPT -- "High Bandwidth (10G / 100G) + Requires Google Managed Encryption" --> VPN_OVER_INTERCONNECT["Cloud HA VPN over Dedicated Interconnect<br/>- Combines high bandwidth with Google-managed IPsec encryption"]
+    BANDWIDTH_ENCRYPT -- "High Bandwidth (10G / 100G) + Standard Connection" --> DEDICATED_INTERCONNECT["Dedicated Interconnect<br/>- 10 Gbps or 100 Gbps direct circuit<br/>- 99.99% SLA (4 links / 2 metros)<br/>- Layer 2 RFC 1918 Private IP access"]
+
+    MEET_COLO -- "No (Not in Colocation Facility)" --> PARTNER_VS_VPN{"What is your bandwidth & SLA requirement?"}
+    PARTNER_VS_VPN -- "50 Mbps to 50 Gbps + Enterprise SLA Needed" --> PARTNER_INTERCONNECT["Partner Interconnect<br/>- Connect via Partner (Equinix, Megaport)<br/>- Layer 2 (Cloud Router BGP) or Layer 3<br/>- 99.99% SLA supported"]
+    PARTNER_VS_VPN -- "Low Bandwidth / Trial / Short Term / Encrypted" --> CLOUD_VPN_HA["Cloud HA VPN<br/>- 1.5 Gbps per tunnel over Public Internet<br/>- 99.99% SLA (2 tunnels / 2 interfaces)"]
+
+    style DEDICATED_INTERCONNECT fill:#34A853,color:#fff
+    style PARTNER_INTERCONNECT fill:#4285F4,color:#fff
+    style CROSS_CLOUD fill:#818CF8,color:#fff
+    style VPN_OVER_INTERCONNECT fill:#34A853,color:#fff
+    style CLOUD_VPN_HA fill:#FBBC05,color:#333
+    style DIRECT_PEERING fill:#0F172A,color:#fff,stroke:#38BDF8
 ```
+
+### ASCII Decision Flow Summary:
+1. **Google Public IPs (Workspace/APIs)**: Direct Peering (if at Google PoP) or Carrier Peering (via Partner). No SLA.
+2. **Multi-Cloud (AWS/Azure/OCI/Alibaba)**: Cross-Cloud Interconnect (10G/100G dedicated ports) or Cloud VPN.
+3. **On-Prem RFC 1918 Internal IPs**:
+   - In Colocation Facility: Dedicated Interconnect (10G/100G). If IPsec encryption required: HA VPN over Dedicated Interconnect.
+   - Not in Colocation Facility: Partner Interconnect (50M-50G via Partner) or Cloud HA VPN (1.5G per tunnel over internet).
+
+---
+
+## 9. Shared VPC vs VPC Network Peering Selection Decision Tree
+
+```mermaid
+flowchart TD
+    SHARE_START["Evaluate Multi-Project Networking Needs"] --> ORG_BOUND{"Are the projects in different GCP Organizations?"}
+
+    ORG_BOUND -- "Yes (Cross-Organization)" --> PEERING_REQ["VPC Network Peering<br/>- Works across different GCP Organizations<br/>- Decentralized administration model<br/>- Independent firewall rules & global routing tables"]
+
+    ORG_BOUND -- "No (Same GCP Organization)" --> SAME_PROJ_CHECK{"Are the networks in the same GCP Project?"}
+    SAME_PROJ_CHECK -- "Yes (Same Project)" --> PEERING_REQ
+
+    SAME_PROJ_CHECK -- "No (Different Projects in Same Org)" --> GOV_MODEL{"What is the required network administration model?"}
+
+    GOV_MODEL -- "Centralized Control (Central Network Admin manages all subnets/firewalls)" --> SHARED_VPC_OPT["Shared VPC<br/>- Single Host Project + Attached Service Projects<br/>- Centralized subnet, route & firewall governance<br/>- IAM-based delegation: Service Admins manage VMs only"]
+
+    GOV_MODEL -- "Decentralized Control (Separate Admin Teams for each VPC)" --> PEERING_REQ
+
+    style SHARED_VPC_OPT fill:#34A853,color:#fff
+    style PEERING_REQ fill:#4285F4,color:#fff
+```
+
+### Shared VPC vs VPC Network Peering Feature Comparison
+
+| Architectural Feature | Shared VPC | VPC Network Peering |
+| :--- | :--- | :--- |
+| **Organization Scope** | **Same Organization only** | **Cross-Organization & Same Organization** |
+| **Project Boundary** | Across Projects (Host + Service Projects) | Across VPC Networks (Same or Different Projects) |
+| **Administration Model** | **Centralized**: Network Admin controls Host VPC | **Decentralized**: Each Network Admin controls their own VPC |
+| **Firewall & Routing Control** | Single centralized firewall policy in Host Project | Independent firewall rules and routing tables per VPC |
+| **Transitive Routing** | Supported natively within Host Project subnets | **Non-transitive**: Network A peered to B, B to C -> A cannot reach C |
+| **Security IAM Model** | Subnet-level IAM delegation (`roles/compute.networkUser`) | Bi-directional peering agreement required by both admins |
+
