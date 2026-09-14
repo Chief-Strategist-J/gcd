@@ -10,6 +10,7 @@ Welcome to the **Google Cloud Compute Engine Deep-Dive Architecture & Case Study
 | :--- | :--- | :--- |
 | [**1. Managed Instance Groups, Autoscaling & Load Balancing**](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/mig-autoscaling-loadbalancing.md) | Fleet Management, Resiliency & Scale | Managed Instance Groups (MIGs), Instance Templates, Auto-Healing Health Checks, Zonal vs Regional MIGs (Zonal Outage Resilience), Stateless vs Stateful MIGs, Dynamic Autoscaling (CPU/RPS/Queue Metrics), Zero-Downtime Rolling Updates, Layer 4 NLB vs Layer 7 ALB Software-Defined Load Balancing. |
 | [**2. Global Application Load Balancer in Action**](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/alb-global-routing-in-action.md) | Global Request Lifecycle & Traffic Management | Single Global Anycast IP, Global Forwarding Rules, Target HTTPS Proxy & SSL Certs (up to 15), QUIC Protocol, Capacity & Proximity Routing, Cross-Region Failover, Backend Buckets (Cloud Storage Static Content), and Network Endpoint Groups (Zonal, Internet, Hybrid, Serverless NEGs). |
+| [**3. Cloud CDN Edge Caching & Cache Modes**](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/cloud-cdn-edge-caching.md) | Edge Acceleration & Content Offload | Global 90+ Edge PoPs, Cache Miss vs. Cache Fill vs. Cache Hit Sequence Flow, Cache Modes (`USE_ORIGIN_HEADERS`, `CACHE_ALL_STATIC`, `FORCE_CACHE_ALL`), Cloud Logging Diagnostics, and Cache Key Customization. |
 
 ---
 
