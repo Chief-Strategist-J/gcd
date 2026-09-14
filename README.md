@@ -22,7 +22,8 @@ gcd/
 │   │   ├── mig-autoscaling-loadbalancing.md # Case Study 1: MIGs, Autoscaling & Load Balancing
 │   │   ├── alb-global-routing-in-action.md  # Case Study 2: Global ALB Routing, Capacity & Failover
 │   │   ├── cloud-cdn-edge-caching.md        # Case Study 3: Cloud CDN Edge Caching & Cache Modes
-│   │   └── layer4-network-load-balancers.md # Case Study 4: Layer 4 NLBs (Proxy vs Passthrough)
+│   │   ├── layer4-network-load-balancers.md # Case Study 4: Layer 4 NLBs (Proxy vs Passthrough)
+│   │   └── internal-load-balancers-3tier-architecture.md # Case Study 5: Internal Load Balancers & 3-Tier Architecture
 │   ├── hld-lld-design.md             # High-Level Architecture & Low-Level State Machine
 │   ├── decision-tree.md              # ASCII & Visual Decision Trees (Machine Specs & SSH)
 │   ├── shell-commands.md             # In-Depth CLI Manual & Error Matrix (`gcloud compute`)
@@ -91,6 +92,7 @@ gcd/
 * **[Case Study 2: Global ALB Routing in Action (`compute-engine/casestudy/alb-global-routing-in-action.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/alb-global-routing-in-action.md)**
 * **[Case Study 3: Cloud CDN Edge Caching & Cache Modes (`compute-engine/casestudy/cloud-cdn-edge-caching.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/cloud-cdn-edge-caching.md)**
 * **[Case Study 4: Layer 4 NLBs (Proxy vs Passthrough) (`compute-engine/casestudy/layer4-network-load-balancers.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/layer4-network-load-balancers.md)**
+* **[Case Study 5: Internal Load Balancers & 3-Tier (`compute-engine/casestudy/internal-load-balancers-3tier-architecture.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/internal-load-balancers-3tier-architecture.md)**
 * **[HLD & LLD Design (`compute-engine/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/hld-lld-design.md)**
 * **[ASCII & Visual Decision Trees (`compute-engine/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/decision-tree.md)**
 * **[Shell Command Reference & Failure Resolutions (`compute-engine/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/shell-commands.md)**

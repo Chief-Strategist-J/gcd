@@ -13,6 +13,7 @@ Welcome to the dedicated documentation index for **Google Cloud Compute Engine**
 | **Case Study 2: Global ALB in Action** | [`/casestudy/alb-global-routing-in-action.md`](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/alb-global-routing-in-action.md) | 5-stage request lifecycle, proximity & capacity routing, cross-region failover overflow, and URL path rules. |
 | **Case Study 3: Cloud CDN Edge Caching** | [`/casestudy/cloud-cdn-edge-caching.md`](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/cloud-cdn-edge-caching.md) | Edge PoPs, Cache Miss/Hit/Fill flow, cache modes (`USE_ORIGIN_HEADERS`, `CACHE_ALL_STATIC`, `FORCE_CACHE_ALL`), logging & invalidation. |
 | **Case Study 4: Layer 4 Network Load Balancers** | [`/casestudy/layer4-network-load-balancers.md`](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/layer4-network-load-balancers.md) | Proxy NLB (Target TCP/SSL) vs Passthrough NLB (Maglev, DSR), Source IP preservation, and Regional Backend Services vs Legacy Target Pools. |
+| **Case Study 5: Internal Load Balancers & 3-Tier** | [`/casestudy/internal-load-balancers-3tier-architecture.md`](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/internal-load-balancers-3tier-architecture.md) | Internal ALB (Envoy Proxy, Regional vs Cross-Region), Internal Passthrough NLB (Andromeda SDN), Internal Proxy NLB, and Enterprise 3-Tier Blueprint. |
 | **Architecture** | [`/hld-lld-design.md`](file:///home/btpl-lap-22/live/gcd/compute-engine/hld-lld-design.md) | High-Level Architecture (VPC, Disks, IAM) & Low-Level Mechanics (Lifecycle State Machine, Guest Agent Metadata `169.254.169.254`, Live Migration). |
 | **Decision Trees** | [`/decision-tree.md`](file:///home/btpl-lap-22/live/gcd/compute-engine/decision-tree.md) | ASCII & Visual Mermaid decision trees for Machine Type selection (General vs Spot vs Compute vs Memory) and SSH Access Strategy. |
 | **CLI Commands** | [`/shell-commands.md`](file:///home/btpl-lap-22/live/gcd/compute-engine/shell-commands.md) | In-depth `gcloud compute instances` command manual for VM provisioning, Spot nodes, dynamic scaling, IAP SSH tunneling, and persistent disks. |
@@ -27,7 +28,8 @@ Welcome to the dedicated documentation index for **Google Cloud Compute Engine**
 3. [View Case Study 2: Global ALB Routing in Action (`casestudy/alb-global-routing-in-action.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/alb-global-routing-in-action.md)
 4. [View Case Study 3: Cloud CDN Edge Caching & Cache Modes (`casestudy/cloud-cdn-edge-caching.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/cloud-cdn-edge-caching.md)
 5. [View Case Study 4: Layer 4 NLBs (Proxy vs Passthrough) (`casestudy/layer4-network-load-balancers.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/layer4-network-load-balancers.md)
-6. [View High-Level & Low-Level Design (`hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/hld-lld-design.md)
-7. [View Decision Trees (`decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/decision-tree.md)
-8. [View Shell Command Reference (`shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/shell-commands.md)
-9. [View Official Reference Links (`references.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/references.md)
+6. [View Case Study 5: Internal Load Balancers & 3-Tier Architecture (`casestudy/internal-load-balancers-3tier-architecture.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/casestudy/internal-load-balancers-3tier-architecture.md)
+7. [View High-Level & Low-Level Design (`hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/hld-lld-design.md)
+8. [View Decision Trees (`decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/decision-tree.md)
+9. [View Shell Command Reference (`shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/shell-commands.md)
+10. [View Official Reference Links (`references.md`)](file:///home/btpl-lap-22/live/gcd/compute-engine/references.md)
