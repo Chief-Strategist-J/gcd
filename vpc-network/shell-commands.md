@@ -1317,7 +1317,8 @@ gcloud compute firewall-rules create gcd-prod-custom-vpc-deny-all-egress-log \
     --destination-ranges=0.0.0.0/0 \
     --enable-logging
 
-# Step 6: Provision Cloud Router & Exhaustive Cloud NAT Gateway
+# Step 6: Provision Cloud Router & Exhaustive Cloud NAT Gateways (Public NAT & Private NAT)
+# Step 6.1: Provision Public Cloud NAT Gateway (Outbound Internet Access for Private VMs)
 gcloud compute routers create gcd-nat-router-uscentral1 \
     --network=gcd-prod-custom-vpc \
     --region=us-central1 \
@@ -1338,6 +1339,14 @@ gcloud compute routers nats create gcd-nat-gateway-uscentral1 \
     --endpoint-types=ENDPOINT_TYPE_VM \
     --enable-logging \
     --log-filter=ALL
+
+# Step 6.2: Provision Private NAT Gateway (Hybrid Interconnect Overlapping Subnet Translation)
+gcloud compute routers nats create gcd-private-nat-uscentral1 \
+    --router=gcd-nat-router-uscentral1 \
+    --region=us-central1 \
+    --type=PRIVATE \
+    --nat-all-subnet-ip-ranges \
+    --rules='type=NATP,subnet=prod-subnet-us-central1'
 
 # Step 7: Configure Private Service Access (PSA) for Cloud SQL & MemoryStore
 # Reserve IP Range for Service Networking Peering
