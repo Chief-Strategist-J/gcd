@@ -1860,8 +1860,9 @@ graph TB
         VPCNet --- CloudNATGW
     end
 
-    SharedSubnet == "IAM Delegation: roles/compute.networkUser<br/>roles/container.hostServiceAgentUser" ==> ServiceGKE
-    SharedSubnet == "IAM Delegation: roles/compute.networkUser" ==> ServiceVMs
+    HostProject == "Host Project IAM:<br/>roles/container.hostServiceAgentUser" ==> ServiceGKE
+    SharedSubnet == "Subnet IAM Delegation:<br/>roles/compute.networkUser" ==> ServiceGKE
+    SharedSubnet == "Subnet IAM Delegation:<br/>roles/compute.networkUser" ==> ServiceVMs
 
     subgraph ServiceProject1["SERVICE PROJECT A: GKE Cluster (gke-workloads-project)"]
         direction TB
@@ -1913,13 +1914,20 @@ graph TB
    - However, during VM creation, Google Cloud's hypervisor attaches the VM's virtual NIC (`eth0`) directly to the **Host Project's subnet**.
    - The worker node leases its primary IP (`10.0.0.15`) from the Host Project's primary range, and GKE assigns Pod CIDRs (`10.4.0.0/14`) from the Host Project's secondary range.
 3. **Mandatory IAM Bindings for GKE Shared VPC**:
-   - For GKE in a Service Project to configure VPC resources in the Host Project, two specific IAM roles are required:
-     - `roles/compute.networkUser` granted to the developer group on the specific subnet (enables provisioning VMs and ILBs on that subnet).
-     - `roles/container.hostServiceAgentUser` granted to the **GKE Service Robot** account (`service-SERVICE_PROJECT_NUM@container-engine-robot.iam.gserviceaccount.com`) on the Host Project. This robot account configures VPC firewall rules and routes for load balancers and pod CIDRs on behalf of the GKE cluster.
+   - For GKE in a Service Project to configure and consume VPC resources in the Host Project, distinct IAM roles are required:
+     - **Host Project-Level Role (`roles/container.hostServiceAgentUser`)**:
+       Granted to the **GKE Service Robot** account (`service-GKE_SERVICE_PROJECT_NUM@container-engine-robot.iam.gserviceaccount.com`) on the **Host Project**.
+       *Why project-level?* The GKE service robot configures firewall rules, routes, and internal load balancers on the host network. Google Cloud IAM does not support granting this role at the subnet level; it must be bound to the Host Project resource (`gcloud projects add-iam-policy-binding`).
+     - **Subnet-Level Role (`roles/compute.networkUser`)**:
+       - Granted to the **GKE Service Robot** (`service-GKE_SERVICE_PROJECT_NUM@container-engine-robot.iam.gserviceaccount.com`) on the specific shared subnet.
+       - Granted to the **Google APIs Service Agent** (`GKE_SERVICE_PROJECT_NUM@cloudservices.gserviceaccount.com`) on the specific shared subnet.
+       - Granted to the developer group deploying GKE clusters and internal LBs on that subnet.
 4. **Zero-Latency Cross-Project Private Communication**:
    - Workloads in Service Project A (GKE Pods) and Service Project B (Dataproc VMs) communicate with each other over private RFC 1918 IP addresses as if they resided within the same local network. Traffic traverses Google Cloud's high-speed SDN fabric with zero intermediate gateways, zero NAT, and zero VPC peering limits.
 
 ### A. Shared VPC Host & Service Project Configuration Sequence
+
+```bash
 # STEP 1: Enable Host Project (Run by Network Security Team)
 gcloud compute shared-vpc enable host-network-project-id
 
@@ -1935,12 +1943,26 @@ gcloud compute networks subnets add-iam-policy-binding gke-us-central1-subnet \
   --role="roles/compute.networkUser"
   # Grants permission to provision GKE nodes, VMs, and internal LBs inside this specific subnet.
 
-# STEP 4: Grant GKE Robot Account Permission on Host Subnet (MANDATORY for GKE)
+# STEP 4: Grant GKE Service Agent Host Service Agent User on Host Project (PROJECT-LEVEL: MANDATORY for GKE)
+# CRITICAL: roles/container.hostServiceAgentUser CANNOT be bound to a subnet; it MUST be bound to the Host Project!
+gcloud projects add-iam-policy-binding host-network-project-id \
+  --member="serviceAccount:service-GKE_SERVICE_PROJECT_NUM@container-engine-robot.iam.gserviceaccount.com" \
+  --role="roles/container.hostServiceAgentUser"
+
+# STEP 5: Grant Network User Role on Host Subnet to GKE Robot & Cloud Services Agent
+# 5a. GKE Service Robot needs subnet access to bind worker nodes & secondary IP ranges
 gcloud compute networks subnets add-iam-policy-binding gke-us-central1-subnet \
   --project=host-network-project-id \
   --region=us-central1 \
   --member="serviceAccount:service-GKE_SERVICE_PROJECT_NUM@container-engine-robot.iam.gserviceaccount.com" \
-  --role="roles/container.hostServiceAgentUser"
+  --role="roles/compute.networkUser"
+
+# 5b. Google APIs Service Agent needs subnet access to create GCE instance resources
+gcloud compute networks subnets add-iam-policy-binding gke-us-central1-subnet \
+  --project=host-network-project-id \
+  --region=us-central1 \
+  --member="serviceAccount:GKE_SERVICE_PROJECT_NUM@cloudservices.gserviceaccount.com" \
+  --role="roles/compute.networkUser"
 ```
 
 ---
@@ -2003,6 +2025,8 @@ sequenceDiagram
    - The token is delivered to the container's SDK client in memory and is automatically refreshed before expiration. No credentials ever touch disk, eliminating exfiltration risks completely.
 
 ### A. Workload Identity Configuration & Binding Sequence
+
+```bash
 # STEP 1: Create Google IAM Service Account (GSA) with Least Privilege
 gcloud iam service-accounts create database-reader-gsa \
   --display-name="GSA for Production Backend Database Reader" \
