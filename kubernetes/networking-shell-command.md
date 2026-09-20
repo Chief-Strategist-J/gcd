@@ -54,9 +54,9 @@ graph TB
     SubnetSvc === SvcVIP
     NodeNIC === DockerHost
 
-    style VPC fill:#e8eaf6,stroke:#283593,stroke-width:2px
-    style K8S fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    style DOCKER fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style VPC fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
+    style K8S fill:#022c22,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+    style DOCKER fill:#431407,stroke:#fb923c,stroke-width:2px,color:#ffedd5
 ```
 
 ### Internal Architectural Datapath: How Docker, CNI, and VPC Underlay Bind Together
@@ -89,22 +89,22 @@ sequenceDiagram
     participant NetPol as Cilium eBPF NetworkPolicy
     participant Pod as Backend Pod (10.4.1.24:8080)
 
-    Client->>Edge: 1. TCP SYN to 34.120.50.10:443 [Src: 203.0.113.19:54321]
+    Client->>Edge: 1. TCP SYN to 34.120.50.10:443 (Src: 203.0.113.19:54321)
     Note over Edge: Terminated at nearest Google Edge Point of Presence<br/>Routed across Google Global Fiber Backbone
     Edge->>Armor: 2. Layer 7 HTTP/2 Request Inspection
     Note over Armor: Evaluates Rate Limits (Token Bucket: 100 req/min)<br/>Scans OWASP ModSecurity Rules (SQLi, XSS, Log4j)<br/>Validates Geo-IP & reCAPTCHA Enterprise Score
-    alt Threat Detected / Quota Breached
-        Armor-->>Client: HTTP 403 Forbidden / HTTP 429 Too Many Requests
+    alt Threat Detected or Rate Limit Breached (Security Drop)
+        Armor--xClient: HTTP 403 Forbidden or HTTP 429 Too Many Requests (DROPPED)
     else Verified Clean Request
         Armor->>GLB: 3. Forward to Google Front End (GFE) L7 Proxy
-        Note over GLB: Terminates Client TLS (ECDHE-RSA-AES128-GCM-SHA256)<br/>Evaluates Gateway API HTTPRoute hostnames & URL prefixes<br/>Appends "X-Forwarded-For: 203.0.113.19" & Client TLS Cert Fingerprint
+        Note over GLB: Terminates Client TLS (ECDHE-RSA-AES128-GCM-SHA256)<br/>Evaluates Gateway API HTTPRoute hostnames & URL prefixes<br/>Appends X-Forwarded-For: 203.0.113.19 & Client TLS Cert Fingerprint
         GLB->>NEG: 4. Route directly to Pod IP via Network Endpoint Group
         Note over NEG: Bypasses kube-proxy, NodePort & Host SNAT!<br/>Lookup table resolves healthy Pod IP: 10.4.1.24:8080
-        NEG->>NodeKernel: 5. Transmit Packet across VPC [Src: 35.191.10.5, Dst: 10.4.1.24:8080]
-        Note over NodeKernel: VirtIO NIC receives packet; VPC firewall verifies<br/>health-check probes from 35.191.0.0/16 & 130.211.0.0/22
+        NEG->>NodeKernel: 5. Transmit Packet across VPC (Src: 35.191.10.5, Dst: 10.4.1.24:8080)
+        Note over NodeKernel: VirtIO NIC receives packet, VPC firewall verifies<br/>health-check probes from 35.191.0.0/16 & 130.211.0.0/22
         NodeKernel->>NetPol: 6. Inspect Ingress Policy at eBPF tc Hook
-        alt Blocked by NetworkPolicy Spec
-            NetPol--xPod: Silent Drop (Kernel tc DROP action; logs to Hubble)
+        alt Blocked by NetworkPolicy Spec (Security Drop)
+            NetPol--xPod: Silent Drop (Kernel tc DROP action - logs to Hubble)
         else Ingress Policy Match (app: backend-api)
             NetPol->>Pod: 7. Socket-level delivery to Pod veth interface
             Note over Pod: Backend container processes HTTP request on port 8080
@@ -131,11 +131,11 @@ graph TD
     
     VethHandoff --> NetPolCheck{"Kubernetes Egress<br/>NetworkPolicy Check<br/>(Cilium eBPF Map)"}
 
-    NetPolCheck -- "Denied (Not in Egress Whitelist)" --> Drop1["Drop Packet at Host Kernel Interface<br/>(Audit Logged via Cilium Hubble)"]
-    NetPolCheck -- "Permitted" --> HostRouting["Host Node Routing Table<br/>Lookup Destination CIDR & Transmit via eth0 (10.0.0.15)"]
+    NetPolCheck -- "x Denied (Not in Egress Whitelist) x" --> Drop1["Drop Packet at Host Kernel Interface<br/>(Audit Logged via Cilium Hubble)"]
+    NetPolCheck -- "Permitted by Policy" --> HostRouting["Host Node Routing Table<br/>Lookup Destination CIDR & Transmit via eth0 (10.0.0.15)"]
 
     HostRouting --> VPCFirewall{"VPC Egress Firewall Policy<br/>Evaluated by Priority (0 -> 65535)"}
-    VPCFirewall -- "Rule Match: DENY" --> Drop2["Drop Packet at Andromeda SDN Hypervisor<br/>(Audit Logged to Cloud Logging VPC Flow Logs)"]
+    VPCFirewall -- "x Rule Match: DENY x" --> Drop2["Drop Packet at Andromeda SDN Hypervisor<br/>(Audit Logged to Cloud Logging VPC Flow Logs)"]
     VPCFirewall -- "Rule Match: ALLOW" --> RouteDecision{"Google Cloud VPC Route Table<br/>Longest-Prefix Match (LPM)"}
 
     RouteDecision -- "0.0.0.0/0 (Default Internet Route)" --> CloudNAT["Cloud NAT Gateway (nat-gateway-us-central1)<br/>Performs Stateful SNAT<br/>Rewrites 10.4.1.24:45210 -> 34.120.1.5:60124"]
@@ -149,12 +149,12 @@ graph TD
     Interconnect --> OnPrem["Enterprise On-Premises Core Network & Databases"]
     HAVPN --> OnPrem
 
-    style Pod fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
-    style Drop1 fill:#ffebee,stroke:#c62828,stroke-width:2px
-    style Drop2 fill:#ffebee,stroke:#c62828,stroke-width:2px
-    style CloudNAT fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    style Interconnect fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    style HAVPN fill:#ede7f6,stroke:#512da8,stroke-width:2px
+    style Pod fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style Drop1 fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style Drop2 fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style CloudNAT fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#fef3c7
+    style Interconnect fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style HAVPN fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
 ```
 
 #### Internal Egress Packet Lifecycle Breakdown (Step-by-Step)
@@ -250,11 +250,11 @@ graph TB
 
     HostNIC -. "Native VPC Underlay Routing" .-> VPC[("Google Cloud VPC Network Fabric")]
 
-    style ContainerNS fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
-    style HostRootNS fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    style BridgeDev fill:#f1f8e9,stroke:#558b2f,stroke-width:2px
-    style Netfilter fill:#fbe9e7,stroke:#d84315,stroke-width:2px
-    style VPC fill:#ede7f6,stroke:#512da8,stroke-width:2px
+    style ContainerNS fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style HostRootNS fill:#1e293b,stroke:#f59e0b,stroke-width:2px,color:#f8fafc
+    style BridgeDev fill:#022c22,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+    style Netfilter fill:#3c1618,stroke:#f87171,stroke-width:2px,color:#fee2e2
+    style VPC fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
 ```
 
 #### Step-by-Step Docker Datapath & Linux Kernel Mechanics
@@ -505,7 +505,7 @@ graph TD
     
     ConntrackCheck -- "State: NEW<br/>(First SYN Packet)" --> OrgFirewall{"Layer 1: Organization Firewall Policy<br/>Evaluated by Priority (0 -> 999)<br/>Enforced across entire GCP Org / Folder"}
 
-    OrgFirewall -- "Rule Match: DENY" --> DropOrg["Drop Packet at Edge<br/>Log Event to Cloud Audit & Security Command Center"]
+    OrgFirewall -- "x Rule Match: DENY x" --> DropOrg["Drop Packet at Edge<br/>Log Event to Cloud Audit & Security Command Center"]
     OrgFirewall -- "Rule Match: ALLOW / GOTO_NEXT" --> VPCFirewall{"Layer 2: VPC Network Firewall Rules<br/>Evaluated by Priority (0 -> 65535)<br/>Lowest number takes precedence"}
 
     VPCFirewall --> RuleMatch{"Rule Attributes Evaluation:<br/>1. Direction (INGRESS)<br/>2. Source CIDR / Tag / SA Match?<br/>3. Target Tag: 'gke-node' Match?<br/>4. Protocol: TCP & Port: 443 Match?"}
@@ -513,7 +513,7 @@ graph TD
     RuleMatch -- "No Match on Current Rule" --> NextPriority["Evaluate Next Lower Priority Rule"]
     NextPriority --> VPCFirewall
 
-    RuleMatch -- "Match: Action = DENY" --> DropVPC["Drop Packet at Hypervisor Boundary<br/>Emit VPC Flow Log with reason: 'DROPPED_BY_FIREWALL'"]
+    RuleMatch -- "x Match: Action = DENY x" --> DropVPC["Drop Packet at Hypervisor Boundary<br/>Emit VPC Flow Log with reason: 'DROPPED_BY_FIREWALL'"]
     RuleMatch -- "Match: Action = ALLOW" --> WriteConntrack["Commit 5-Tuple to State Table<br/>Track: [Src IP, Dst IP, Src Port, Dst Port, TCP]"]
 
     WriteConntrack --> PassToNode["Forward Frame across VirtIO vNIC to Node eth0"]
@@ -522,14 +522,14 @@ graph TD
     PassToNode --> NetPolCheck{"Layer 3: Kubernetes NetworkPolicy<br/>Cilium eBPF tc Ingress Filter<br/>Match Pod Selector Labels"}
     
     NetPolCheck -- "Allowed by Ingress Spec" --> DeliverPod["Deliver to Container TCP Socket Buffer (sk_buff)<br/>Application completes TCP 3-Way Handshake"]
-    NetPolCheck -- "Denied (Default-Deny)" --> DropNetPol["Kernel Drops Packet<br/>Log Security Event to Cilium Hubble"]
+    NetPolCheck -- "x Denied (Default-Deny) x" --> DropNetPol["Kernel Drops Packet<br/>Log Security Event to Cilium Hubble"]
 
-    style InPacket fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    style FastPath fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    style DropOrg fill:#ffebee,stroke:#c62828,stroke-width:2px
-    style DropVPC fill:#ffebee,stroke:#c62828,stroke-width:2px
-    style DropNetPol fill:#ffebee,stroke:#c62828,stroke-width:2px
-    style DeliverPod fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style InPacket fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style FastPath fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style DropOrg fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style DropVPC fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style DropNetPol fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style DeliverPod fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
 ```
 
 #### Internal Stateful Firewall Pipeline Mechanics (Step-by-Step)
@@ -693,17 +693,17 @@ graph TB
         TC_Hook --> NetPolMap{"cilium_policy (BPF Identity Map)<br/>Lookup: Source Identity ID-1042<br/>Allowed on Port 8080?"}
         
         NetPolMap -- "Match: ALLOW (Label: app=frontend)" --> BPFDirectPass["Direct Packet Redirect to Pod veth<br/>bpf_redirect_peer() - Zero Copy!"]
-        NetPolMap -- "Match: DENY (Not in Allowed Ingress)" --> DropSilently["Kernel Drops Frame Immediately<br/>Emits Security Audit to Hubble / Prometheus"]
+        NetPolMap -- "x Match: DENY (Not in Allowed Ingress) x" --> DropSilently["Kernel Drops Frame Immediately<br/>Emits Security Audit to Hubble / Prometheus"]
         
         BPFDirectPass --> PodB["Pod B (Backend Microservice)<br/>IP: 10.4.2.50:8080 • Security Identity: ID-2089"]
     end
 
-    style Node1 fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    style Node2 fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    style ModernDatapath fill:#e0f2f1,stroke:#00796b,stroke-width:2px
-    style LegacyKubeProxy fill:#ffebee,stroke:#d32f2f,stroke-width:2px
-    style DropSilently fill:#ffebee,stroke:#c62828,stroke-width:2px
-    style PodB fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style Node1 fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
+    style Node2 fill:#022c22,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+    style ModernDatapath fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style LegacyKubeProxy fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#fef3c7
+    style DropSilently fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style PodB fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
 ```
 
 #### Internal CNI Datapath: eBPF vs iptables Packet Mechanics
@@ -925,12 +925,12 @@ graph TD
         Spoke1 <== "Full Any-to-Any Mesh Reachability (VPC-A -> Hub -> VPC-C Allowed!)" ==> Spoke3
     end
 
-    style NonTransitive fill:#ffebee,stroke:#c62828,stroke-width:2px
-    style NCCTransit fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    style TableA fill:#fff3e0,stroke:#f57c00
-    style TableB fill:#fff3e0,stroke:#f57c00
-    style TableC fill:#fff3e0,stroke:#f57c00
-    style NCCHub fill:#e0f2f1,stroke:#00796b,stroke-width:2px
+    style NonTransitive fill:#3c1618,stroke:#ef4444,stroke-width:2px,color:#fee2e2
+    style NCCTransit fill:#022c22,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style TableA fill:#1e293b,stroke:#f59e0b,stroke-width:1.5px,color:#f8fafc
+    style TableB fill:#1e293b,stroke:#f59e0b,stroke-width:1.5px,color:#f8fafc
+    style TableC fill:#1e293b,stroke:#f59e0b,stroke-width:1.5px,color:#f8fafc
+    style NCCHub fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
 ```
 
 #### Why VPC Peering Is Non-Transitive & How NCC Hub Solves It
@@ -1270,7 +1270,7 @@ graph LR
     subgraph ConsumerVPC["Consumer VPC (Subnet: 10.200.0.0/16 - Can overlap with Producer!)"]
         direction TB
         ConsumerApp["Consumer Pod / VM<br/>IP: 10.200.1.10"]
-        ConsumerApp -->|1. Transmits Socket Packet<br/>[Src: 10.200.1.10:51240, Dst: 10.200.1.50:443]| ConsumerEndpoint
+        ConsumerApp -->|"1. Transmits Socket Packet (Src: 10.200.1.10:51240, Dst: 10.200.1.50:443)"| ConsumerEndpoint
         ConsumerEndpoint["PSC Endpoint (Forwarding Rule)<br/>Allocated from Consumer Subnet: 10.200.1.50"]
     end
 
@@ -1280,20 +1280,20 @@ graph LR
         direction TB
         PSCAttachment["Service Attachment<br/>psc-backend-service-attachment<br/>Projects Whitelist Filter (Accept Automatic)"]
         
-        PSCNATSubnet["Dedicated PSC NAT Subnet (purpose=PRIVATE_SERVICE_CONNECT)<br/>IP Pool: 10.90.0.0/24<br/>3. SNAT: Rewrites [Src: 10.200.1.10] -> [Src: 10.90.0.15:39102]"]
+        PSCNATSubnet["Dedicated PSC NAT Subnet (purpose=PRIVATE_SERVICE_CONNECT)<br/>IP Pool: 10.90.0.0/24<br/>3. SNAT: Rewrites Src: 10.200.1.10 -> Src: 10.90.0.15:39102"]
         
         ProducerILB["Internal Passthrough Load Balancer (ILB)<br/>VIP: 10.0.5.100:443 • Optional: PROXY Protocol v2"]
-        ProducerPods["GKE Target Pod Replicas (10.4.1.24:8080)<br/>4. Receives Packet: [Src: 10.90.0.15, Dst: 10.4.1.24:8080]"]
+        ProducerPods["GKE Target Pod Replicas (10.4.1.24:8080)<br/>4. Receives Packet: Src: 10.90.0.15, Dst: 10.4.1.24:8080"]
 
         PSCAttachment --> PSCNATSubnet
         PSCNATSubnet --> ProducerILB
         ProducerILB --> ProducerPods
     end
 
-    style ConsumerVPC fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    style ProducerVPC fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    style PSCAttachment fill:#fff9c4,stroke:#fbc02d,stroke-width:2px
-    style PSCNATSubnet fill:#ffe0b2,stroke:#f57c00,stroke-width:2px
+    style ConsumerVPC fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style ProducerVPC fill:#022c22,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+    style PSCAttachment fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#fef3c7
+    style PSCNATSubnet fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
 ```
 
 #### Internal PSC Datapath & Address Translation Mechanics
@@ -1489,21 +1489,29 @@ graph LR
         
         Kernel2["Linux Kernel Datapath v2 (Kernel-Space)<br/>3. Kernel WireGuard Decryption<br/>- Validates Peer Public Cryptokey<br/>- Decrypts WireGuard envelope in kernel (Zero-Copy)"]
         
-        Envoy2["Envoy Sidecar Proxy (User-Space)<br/>4. Layer 7 mTLS Termination & Authorization<br/>- Validates Client SPIFFE Certificate SAN<br/>- Checks Istio AuthorizationPolicy (RBAC Whitelist)"]
+        Envoy2["Envoy Sidecar Proxy (User-Space)<br/>4. Layer 7 mTLS Termination & Authorization<br/>- Validates Client SPIFFE Certificate SAN<br/>- Evaluates Istio AuthorizationPolicy"]
         
-        App2["Backend API Pod (10.4.2.50:8080)<br/>5. Receives Authorized Cleartext Request<br/>200 OK Response Emitted"]
+        App2["Backend API Pod (10.4.2.50:8080)<br/>5. Authorized Request Processed<br/>200 OK Response Emitted"]
+        
+        DropUnauthorized["Security Drop: RBAC Unauthorized<br/>HTTP 403 Forbidden<br/>mTLS Terminated Early"]
 
         Eth0_2 -->|UDP Datagram| Kernel2
         Kernel2 -->|Decrypted TLS Stream| Envoy2
-        Envoy2 -->|Plaintext HTTP Socket| App2
+        Envoy2 -->|4a. Authorized: Plaintext HTTP Socket| App2
+        Envoy2 -.->|"4b. Unauthorized SPIFFE ID (RBAC Deny)"| DropUnauthorized
     end
 
-    style SrcNode fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px
-    style DstNode fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    style Envoy1 fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    style Envoy2 fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    style Kernel1 fill:#ede7f6,stroke:#512da8,stroke-width:2px
-    style Kernel2 fill:#ede7f6,stroke:#512da8,stroke-width:2px
+    style SrcNode fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
+    style DstNode fill:#022c22,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+    style App1 fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style Envoy1 fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#fef3c7
+    style Kernel1 fill:#312e81,stroke:#a78bfa,stroke-width:2px,color:#ede9fe
+    style Eth0_1 fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
+    style Eth0_2 fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
+    style Kernel2 fill:#312e81,stroke:#a78bfa,stroke-width:2px,color:#ede9fe
+    style Envoy2 fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#fef3c7
+    style App2 fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style DropUnauthorized fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
 ```
 
 #### Internal Dual-Layer Cryptographic Pipeline Mechanics
@@ -1590,8 +1598,8 @@ graph TB
 
     AnycastVIP["Google Anycast Global VIP: 34.120.50.10<br/>Advertised via BGP across 100+ Global Edge Points of Presence (PoPs)"]
 
-    UserUS -->|TCP Handshake at closest US PoP| AnycastVIP
-    UserEU -->|TCP Handshake at closest EU PoP| AnycastVIP
+    UserUS -->|"TCP Handshake at closest US PoP"| AnycastVIP
+    UserEU -->|"TCP Handshake at closest EU PoP"| AnycastVIP
     
     GLB["Google Cloud Global External HTTPS Load Balancer<br/>MultiClusterIngress (MCI) Controller<br/>Health Probing: GET /healthz every 5s"]
 
@@ -1613,15 +1621,27 @@ graph TB
         MCI2 --> GKE2 --> Pods2
     end
 
-    GLB -- "1. Latency-Based Geo-Routing (5ms RTT)" --> MCI1
-    GLB -- "2. Latency-Based Geo-Routing (3ms RTT)" --> MCI2
-    GLB -. "3. Automated Cross-Region Disaster Recovery Failover<br/>(If US Cluster fails health check, 100% traffic redirects to EU in < 5s!)" .-> MCI2
+    FailR1["Region 1 Failure Detected<br/>Consecutive Health Check Timeouts<br/>Traffic Instantly Drained"]
 
-    style GlobalUsers fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    style AnycastVIP fill:#fff9c4,stroke:#fbc02d,stroke-width:2px
-    style GLB fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    style REGION1 fill:#ede7f6,stroke:#512da8,stroke-width:2px
-    style REGION2 fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    GLB == "1. Normal: Geo-Proximity Routing (5ms RTT)" ==> MCI1
+    GLB == "2. Normal: Geo-Proximity Routing (3ms RTT)" ==> MCI2
+    REGION1 -.->|"Health Probe Timeout (3x Fail)"| FailR1
+    FailR1 ==>|"3. Automated DR Failover: 100% Traffic Redirected (< 5s)"| MCI2
+
+    style GlobalUsers fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style UserUS fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
+    style UserEU fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
+    style AnycastVIP fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#fef3c7
+    style GLB fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style REGION1 fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
+    style MCI1 fill:#312e81,stroke:#a78bfa,stroke-width:2px,color:#ede9fe
+    style GKE1 fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
+    style Pods1 fill:#022c22,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+    style REGION2 fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
+    style MCI2 fill:#312e81,stroke:#a78bfa,stroke-width:2px,color:#ede9fe
+    style GKE2 fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
+    style Pods2 fill:#022c22,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+    style FailR1 fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
 ```
 
 #### Multi-Cluster Ingress Anycast & Automatic Failover Mechanics
@@ -1705,15 +1725,21 @@ graph TB
         CloudRouter === GKENodes
     end
 
-    OnPremRouter == "1. PRIMARY PATH: 10G/100G Dedicated Interconnect<br/>- Physical Cross-Connect in Co-lo Facility (VLAN 400)<br/>- BGP Advertised Priority (MED) = 100 (ACTIVE TRAFFIC)<br/>- BFD Probing: 300ms x 3 = 900ms Sub-Second Dead Timer" ==> CloudRouter
+    InterconnectDown["Physical Link Cut / Circuit Loss<br/>BFD Heartbeats Missed (3x300ms = 900ms)<br/>Interconnect Route Withdrawn from FIB"]
 
-    OnPremRouter -. "2. HOT STANDBY PATH: Cloud HA VPN (IPsec IKEv2)<br/>- Encrypted ESP Tunnels over Public Internet<br/>- BGP Advertised Priority (MED) = 300 (STANDBY BACKUP)<br/>- TCP MSS Clamped to 1360 (Zero Fragmentation)" .-> CloudRouter
+    OnPremRouter == "1. ACTIVE PATH: 10G/100G Dedicated Interconnect (MED: 100)" ==> CloudRouter
+    OnPremRouter -.->|"Fiber Cut Detected"| InterconnectDown
+    InterconnectDown ==>|"2. INSTANT FAILOVER: Hot Standby HA VPN (MED: 300)"| CloudRouter
 
-    style ONPREM fill:#fce4ec,stroke:#880e4f,stroke-width:2px
-    style GCP fill:#e8eaf6,stroke:#1a237e,stroke-width:2px
-    style OnPremRouter fill:#f8bbd0,stroke:#ad1457,stroke-width:2px
-    style CloudRouter fill:#c5cae9,stroke:#283593,stroke-width:2px
-    style WORKLOADS fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style ONPREM fill:#2d0612,stroke:#f43f5e,stroke-width:2px,color:#ffe4e6
+    style OnPremRouter fill:#4c0519,stroke:#fb7185,stroke-width:2px,color:#ffe4e6
+    style OnPremDB fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
+    style GCP fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
+    style CloudRouter fill:#312e81,stroke:#a78bfa,stroke-width:2px,color:#ede9fe
+    style WORKLOADS fill:#022c22,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+    style GKENodes fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style GKEPods fill:#022c22,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+    style InterconnectDown fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
 ```
 
 #### Internal BGP Failover & BFD Heartbeat Mechanics
@@ -1857,10 +1883,24 @@ graph TB
         DataTeam --> ServiceVMs
     end
 
-    style HostProject fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    style ServiceProject1 fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
-    style ServiceProject2 fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
-    style SharedSubnet fill:#fff9c4,stroke:#fbc02d,stroke-width:2px
+    BlockUnauthorized["Security Boundary Enforcement<br/>Attempted Network/Firewall Mutation Denied<br/>HTTP 403: Missing roles/compute.securityAdmin"]
+
+    GKEAdmin -.->|"Attempt to create custom firewall/route"| BlockUnauthorized
+
+    style HostProject fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
+    style VPCNet fill:#312e81,stroke:#a78bfa,stroke-width:2px,color:#ede9fe
+    style HostAdmin fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style SharedSubnet fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#fef3c7
+    style SecurityPolicies fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
+    style CloudNATGW fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style ServiceProject1 fill:#022c22,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+    style GKEAdmin fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
+    style ServiceGKE fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style GKEPodsWorkload fill:#022c22,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+    style ServiceProject2 fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style DataTeam fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
+    style ServiceVMs fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style BlockUnauthorized fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
 ```
 
 #### Shared VPC Internal Provisioning & Permission Boundary Mechanics
@@ -1914,23 +1954,29 @@ sequenceDiagram
     autonumber
     participant App as App Container in Pod (production/database-reader-ksa)
     participant MetaServer as GKE Node Metadata Server DaemonSet (169.254.169.254)
-    participant K8sAPI as Kubernetes API Server (OIDC Issuer: https://container.googleapis.com/...)
+    participant K8sAPI as Kubernetes API Server (Cluster OIDC Provider)
     participant GCPSTS as Google Cloud Security Token Service (sts.googleapis.com)
     participant GCPIAM as Google Cloud IAM Service Account Credentials API
-    participant TargetAPI as Target Google Cloud Service (e.g. Cloud Storage API)
+    participant TargetAPI as Target Google Cloud Service (Cloud Storage API)
 
-    App->>MetaServer: 1. GET http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token<br/>Header: "Metadata-Flavor: Google"
-    Note over MetaServer: Intercepts request via eBPF sock_ops / iptables NAT!<br/>Bypasses VM's underlying GCE host identity completely
-    MetaServer->>K8sAPI: 2. Validate Pod Projected ServiceAccount Token (JWT)<br/>Audience: "my-gcp-project-id.svc.id.goog"<br/>Subject: "system:serviceaccount:production:database-reader-ksa"
+    App->>MetaServer: 1. GET http://169.254.169.254/.../token (Header: Metadata-Flavor: Google)
+    Note over MetaServer: Intercepts request via eBPF sock_ops or iptables NAT - Bypasses host VM identity
+    MetaServer->>K8sAPI: 2. Validate Pod Projected ServiceAccount Token (JWT)
     K8sAPI-->>MetaServer: 3. Cryptographic Signature Verified via Cluster OIDC Keys
-    MetaServer->>GCPSTS: 4. POST https://sts.googleapis.com/v1/token<br/>grant_type=urn:ietf:params:oauth:grant-type:token-exchange<br/>subject_token=<K8s_Projected_JWT>
+    MetaServer->>GCPSTS: 4. POST https://sts.googleapis.com/v1/token (Subject Token Exchange)
     GCPSTS-->>MetaServer: 5. Returns Federated GCP STS Token (Temporary Assertion)
-    MetaServer->>GCPIAM: 6. POST /v1/projects/-/serviceAccounts/database-reader-gsa@...:generateAccessToken
-    Note over GCPIAM: Evaluates IAM Policy Binding:<br/>Does member 'serviceAccount:my-gcp-project-id.svc.id.goog[production/database-reader-ksa]'<br/>hold 'roles/iam.workloadIdentityUser' on this GSA?
-    GCPIAM-->>MetaServer: 7. Returns Short-Lived Google OAuth2 Bearer Token (Valid 3600s: "ya29.c.b0...")
-    MetaServer-->>App: 8. HTTP 200 OK with OAuth2 Access Token (Stored in Pod Memory Only)
-    App->>TargetAPI: 9. GET https://storage.googleapis.com/company-bucket/data.parquet<br/>Header: "Authorization: Bearer ya29.c.b0..."
-    TargetAPI-->>App: 10. HTTP 200 OK (Authorized via GSA role: roles/storage.objectViewer)
+    MetaServer->>GCPIAM: 6. POST /v1/projects/-/serviceAccounts/...:generateAccessToken
+    Note over GCPIAM: Evaluates IAM Policy Binding: Does KSA hold roles/iam.workloadIdentityUser?
+
+    alt Missing IAM Policy Binding (Unauthorized Workload)
+        GCPIAM--xMetaServer: Security Rejection: HTTP 403 Forbidden (Missing IAM Binding)
+        MetaServer--xApp: HTTP 403 Forbidden (GSA Impersonation Denied)
+    else Authorized Workload Identity
+        GCPIAM-->>MetaServer: 7. Returns Short-Lived Google OAuth2 Bearer Token (Valid 3600s)
+        MetaServer-->>App: 8. HTTP 200 OK with OAuth2 Access Token (In-Memory Only)
+        App->>TargetAPI: 9. GET https://storage.googleapis.com/... (Bearer Token)
+        TargetAPI-->>App: 10. HTTP 200 OK (Authorized via GSA role: roles/storage.objectViewer)
+    end
 ```
 
 #### Internal Workload Identity Authentication Flow (Step-by-Step)
@@ -2107,8 +2153,8 @@ graph TB
         PodsCanary["Canary Pods (v2)"]
 
         RouteAuth --> CanarySplit
-        CanarySplit -- 90% Traffic --> SvcProd --> PodsProd
-        CanarySplit -- 10% Canary --> SvcCanary --> PodsCanary
+        CanarySplit -- "90% Traffic" --> SvcProd --> PodsProd
+        CanarySplit -- "10% Canary" --> SvcCanary --> PodsCanary
     end
 
     subgraph SecOpsRole["ROLE 4: SECURITY OPERATIONS (SecOps)"]
@@ -2116,16 +2162,33 @@ graph TB
         GCPPolicy["GCPBackendPolicy: edge-security-policy<br/>targetRef: store-service & auth-v1<br/>Binds Cloud Armor WAF Policy: edge-waf-security-policy"]
     end
 
+    WAFDrop["Edge Security Drop: Cloud Armor WAF<br/>HTTP 403 Forbidden<br/>SQLi / XSS Attack Vector Blocked at GFE Layer"]
+
     Gateway == "Cross-Namespace Attachment Handshake" ==> RouteStore
     Gateway == "Cross-Namespace Attachment Handshake" ==> RouteAuth
     GCPPolicy -. "Attaches WAF & DDoS Rules" .-> SvcStore
     GCPPolicy -. "Attaches WAF & DDoS Rules" .-> SvcProd
+    GCPPolicy -.->|"Signature Threat Detected"| WAFDrop
 
-    style InfraRole fill:#f5f5f5,stroke:#9e9e9e,stroke-width:2px
-    style NetOpsRole fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
-    style AppTeamStore fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
-    style AppTeamAuth fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    style SecOpsRole fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style InfraRole fill:#1e293b,stroke:#94a3b8,stroke-width:2px,color:#f8fafc
+    style GClass fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style NetOpsRole fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
+    style Gateway fill:#312e81,stroke:#a78bfa,stroke-width:2px,color:#ede9fe
+    style TLSCert fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
+    style AppTeamStore fill:#022c22,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+    style RouteStore fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style SvcStore fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style PodsStore fill:#022c22,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+    style AppTeamAuth fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#fef3c7
+    style RouteAuth fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#fef3c7
+    style CanarySplit fill:#312e81,stroke:#a78bfa,stroke-width:2px,color:#ede9fe
+    style SvcProd fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style SvcCanary fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style PodsProd fill:#022c22,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+    style PodsCanary fill:#022c22,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+    style SecOpsRole fill:#312e81,stroke:#a78bfa,stroke-width:2px,color:#ede9fe
+    style GCPPolicy fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
+    style WAFDrop fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
 ```
 
 #### Gateway API Internal Object Resolution & Traffic Splitting Mechanics
@@ -2271,11 +2334,20 @@ graph TD
         CacheDecision -- "Cache Miss" --> UpstreamTCP --> CoreDNSUpstream
     end
 
-    style ClassicProblem fill:#ffebee,stroke:#c62828,stroke-width:2px
-    style NodeLocalSolution fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    style DropOld fill:#ffcdd2,stroke:#b71c1c
-    style TimeoutOld fill:#b71c1c,stroke:#fff,color:#fff
-    style InstantOK fill:#c8e6c9,stroke:#2e7d32
+    style ClassicProblem fill:#2d0612,stroke:#f43f5e,stroke-width:2px,color:#ffe4e6
+    style PodOld fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
+    style KubeProxyOld fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
+    style ConntrackRace fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#fef3c7
+    style DropOld fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style TimeoutOld fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fef2f2
+    style NodeLocalSolution fill:#022c22,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+    style PodNew fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style DummyInterface fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
+    style LocalCache fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style CacheDecision fill:#312e81,stroke:#a78bfa,stroke-width:2px,color:#ede9fe
+    style InstantOK fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style UpstreamTCP fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
+    style CoreDNSUpstream fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
 ```
 
 #### Internal DNS Resolution Datapath & Conntrack Race Condition Breakdown
@@ -2425,12 +2497,32 @@ graph TD
     VPCPacket -. "Crosses IPsec HA VPN Tunnel without MSS Clamping" .-> VPNPacket
     VPNPacket -. "Cloud Router applies TCP MSS Clamping to 1360" .-> MSSClampedPacket
 
-    style StandardPacket fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    style VPCPacket fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    style VPNPacket fill:#ffebee,stroke:#c62828,stroke-width:2px
-    style MSSClampedPacket fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    style NoteFail fill:#b71c1c,stroke:#fff,color:#fff
-    style NoteSuccess fill:#2e7d32,stroke:#fff,color:#fff
+    style StandardPacket fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style IP1 fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
+    style TCP1 fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
+    style Data1 fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style Note1 fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
+    style VPCPacket fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
+    style IP2 fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
+    style TCP2 fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
+    style Data2 fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
+    style Note2 fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
+    style VPNPacket fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style OuterIP fill:#1e293b,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style ESP_H fill:#1e293b,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style ESP_IV fill:#1e293b,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style InnerOrig fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style ESP_T fill:#1e293b,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style ICV fill:#1e293b,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style NoteFail fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fef2f2
+    style MSSClampedPacket fill:#022c22,stroke:#34d399,stroke-width:2px,color:#ecfdf5
+    style OuterIP_OK fill:#1e293b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style ESP_OK fill:#1e293b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style InnerIP_OK fill:#1e293b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style InnerTCP_OK fill:#1e293b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style ClampedData fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style Trailer_OK fill:#1e293b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    style NoteSuccess fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
 ```
 
 #### Internal MTU Discovery, DF Bit Handling & MSS Clamping Mechanics
@@ -2502,30 +2594,30 @@ graph TD
 
         T6 -->|Pass| T7["TIER 7: APPLICATION LAYER & TLS HANDSHAKE<br/>Command: openssl s_client -connect <target_ip>:443 -servername api.corp.com<br/>Tests: TLS certificate valid? SPIFFE mTLS authorized? WAF blocking?"]
 
-        T1 -.->|Fail: No IP| E1["Fix: CNI IPAM IP exhaustion in secondary range"]
-        T2 -.->|Fail: 100% loss| E2["Fix: Host veth down or ARP table full on worker node"]
-        T3 -.->|Fail: Drop logged| E3["Fix: Add ingress/egress rule in NetworkPolicy manifest"]
-        T4 -.->|Fail: Timeout| E4["Fix: Add VPC firewall ALLOW rule for target tags / SAs"]
-        T5 -.->|Fail: No route| E5["Fix: Add custom route or scale Cloud NAT min-ports-per-vm"]
-        T6 -.->|Fail: BGP Down| E6["Fix: Verify BGP ASN, shared secret & IPsec IKEv2 phase 2"]
-        T7 -.->|Fail: Handshake| E7["Fix: Renew expired TLS cert or add Cloud Armor bypass"]
+        T1 -.->|"Fail: No IP"| E1["Fix: CNI IPAM IP exhaustion in secondary range"]
+        T2 -.->|"Fail: 100% loss"| E2["Fix: Host veth down or ARP table full on worker node"]
+        T3 -.->|"Fail: Drop logged"| E3["Fix: Add ingress/egress rule in NetworkPolicy manifest"]
+        T4 -.->|"Fail: Timeout"| E4["Fix: Add VPC firewall ALLOW rule for target tags / SAs"]
+        T5 -.->|"Fail: No route"| E5["Fix: Add custom route or scale Cloud NAT min-ports-per-vm"]
+        T6 -.->|"Fail: BGP Down"| E6["Fix: Verify BGP ASN, shared secret & IPsec IKEv2 phase 2"]
+        T7 -.->|"Fail: Handshake"| E7["Fix: Renew expired TLS cert or add Cloud Armor bypass"]
     end
 
-    style DiagnosisFlow fill:#f5f5f5,stroke:#333,stroke-width:2px
-    style T1 fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
-    style T2 fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
-    style T3 fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    style T4 fill:#fce4ec,stroke:#c2185b,stroke-width:2px
-    style T5 fill:#ede7f6,stroke:#512da8,stroke-width:2px
-    style T6 fill:#e0f2f1,stroke:#00796b,stroke-width:2px
-    style T7 fill:#fff9c4,stroke:#fbc02d,stroke-width:2px
-    style E1 fill:#ffebee,stroke:#c62828
-    style E2 fill:#ffebee,stroke:#c62828
-    style E3 fill:#ffebee,stroke:#c62828
-    style E4 fill:#ffebee,stroke:#c62828
-    style E5 fill:#ffebee,stroke:#c62828
-    style E6 fill:#ffebee,stroke:#c62828
-    style E7 fill:#ffebee,stroke:#c62828
+    style DiagnosisFlow fill:#0b0f19,stroke:#334155,stroke-width:2px,color:#f8fafc
+    style T1 fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style T2 fill:#1e293b,stroke:#60a5fa,stroke-width:2px,color:#f8fafc
+    style T3 fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#fef3c7
+    style T4 fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#e0e7ff
+    style T5 fill:#312e81,stroke:#a78bfa,stroke-width:2px,color:#ede9fe
+    style T6 fill:#14532d,stroke:#22c55e,stroke-width:2px,color:#f0fdf4
+    style T7 fill:#3b0764,stroke:#c084fc,stroke-width:2px,color:#faf5ff
+    style E1 fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style E2 fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style E3 fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style E4 fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style E5 fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style E6 fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
+    style E7 fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fecaca
 ```
 
 #### Systematic Cross-Layer Troubleshooting Decision Flow
