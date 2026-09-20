@@ -158,6 +158,43 @@ graph TD
 
 Controls standalone container isolation, user-defined subnets, DNS alias discovery, and port binding.
 
+```mermaid
+graph TB
+    subgraph ContainerNS["Container Network Namespace (netns)"]
+        AppProc["Application Process (e.g. Nginx:80)"]
+        ContEth0["Container eth0<br/>(IP: 172.28.5.10)"]
+        ContDNS["Embedded DNS Stub<br/>(127.0.0.11:53)"]
+        AppProc --> ContEth0
+        AppProc -. "Resolve api.internal.local" .-> ContDNS
+    end
+
+    subgraph HostRootNS["Host Root Network Namespace (Linux Kernel)"]
+        direction TB
+        VethHost["Peer Interface: veth-xyz<br/>(Attached to Host Bridge)"]
+        Bridge["Linux Bridge: br-app-01<br/>(IP: 172.28.0.1 - Default Gateway)"]
+        DockerDNS["Docker Embedded DNS Engine<br/>(Container Name ↔ IP Map)"]
+        
+        subgraph Netfilter["Linux iptables / Netfilter Engine"]
+            NATPost["POSTROUTING MASQUERADE<br/>(SNAT: Replaces 172.28.5.10 with Host IP)"]
+            NATPre["PREROUTING DNAT<br/>(Port Binding: Host 8080 → Container 80)"]
+        end
+
+        HostNIC["Host Physical Interface: eth0<br/>(IP: 10.0.0.15 - Connected to VPC)"]
+
+        ContEth0 == "veth pair (Virtual Wire)" ==> VethHost
+        VethHost === Bridge
+        ContDNS -.-> DockerDNS
+        Bridge --> NATPost --> HostNIC
+        HostNIC --> NATPre --> Bridge
+    end
+
+    HostNIC -. "Egress to Cloud VPC" .-> VPC[("Google Cloud VPC Subnet")]
+
+    style ContainerNS fill:#e1f5fe,stroke:#0288d1
+    style HostRootNS fill:#fff3e0,stroke:#f57c00
+    style Netfilter fill:#fbe9e7,stroke:#d84315
+```
+
 ### A. Create Custom User-Defined Docker Network (`docker network create`)
 
 ```bash
@@ -505,7 +542,46 @@ gcloud compute firewall-rules create allow-egress-internal-and-web \
 
 Kubernetes NetworkPolicies enforce **Layer 3 and Layer 4 micro-segmentation** between Pods. By default, any Pod in a cluster can talk to any other Pod. Applying a NetworkPolicy shifts the Pod into **Default-Deny** mode.
 
-```bash
+```mermaid
+graph TB
+    subgraph Node1["Worker Node 1 (10.0.0.15)"]
+        direction TB
+        PodA["Pod A (Frontend)<br/>IP: 10.4.1.24"]
+        VethA["veth pair interface"]
+        PodA --> VethA
+
+        subgraph DatapathOption["Cluster Service Routing Engine (VIP: 10.8.0.100)"]
+            direction LR
+            subgraph LegacyKubeProxy["Legacy kube-proxy (iptables)"]
+                IPTablesChain["O(N) Sequential Chain Search<br/>PREROUTING → KUBE-SERVICES<br/>→ KUBE-SVC-XYZ → KUBE-SEP-XYZ<br/>(Heavy CPU overhead at scale)"]
+            end
+            subgraph ModernDatapath["GKE Datapath v2 / Cilium (eBPF)"]
+                eBPFEngine["O(1) BPF Hash Map Lookup<br/>Direct Socket Layer Rewrite<br/>(Zero-copy, bypasses iptables)"]
+            end
+        end
+
+        VethA --> DatapathOption
+        DatapathOption --> NodeNIC1["Node 1 Physical NIC: eth0"]
+    end
+
+    NodeNIC1 == "Google Cloud VPC Fabric (10.0.0.0/16)" ==> NodeNIC2["Node 2 Physical NIC: eth0"]
+
+    subgraph Node2["Worker Node 2 (10.0.0.16)"]
+        direction TB
+        NodeNIC2 --> CNI2["CNI eBPF Packet Filter"]
+        CNI2 --> NetPolEngine{"Target NetworkPolicy<br/>Ingress Rule Engine"}
+        NetPolEngine -- Allowed --> VethB["veth pair interface"]
+        NetPolEngine -- Denied --> DropPacket["Drop Packet (Silence)"]
+        VethB --> PodB["Pod B (Backend API)<br/>IP: 10.4.2.50:8080"]
+    end
+
+    style Node1 fill:#f3e5f5,stroke:#7b1fa2
+    Node2 fill:#e8f5e9,stroke:#388e3c
+    ModernDatapath fill:#e0f2f1,stroke:#00796b
+    LegacyKubeProxy fill:#ffebee,stroke:#d32f2f
+```
+
+### A. Micro-Segmentation NetworkPolicy (Ingress & Egress)
 kubectl apply -f - <<'EOF'
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -1007,6 +1083,33 @@ gcloud compute routers update-bgp-peer nat-router-us-central1 \
 
 Replaces VPC Peering with a **unidirectional private endpoint**. Prevents IP CIDR overlapping collisions, eliminates shared routing table risks, and isolates services completely behind a Layer 4 proxy.
 
+```mermaid
+graph LR
+    subgraph ConsumerVPC["Consumer VPC (10.200.0.0/16)"]
+        ConsumerApp["Client Container / Pod"]
+        ConsumerEndpoint["PSC Endpoint (Forwarding Rule)<br/>Local Subnet IP: 10.200.1.50"]
+        ConsumerApp -->|Connects to local IP| ConsumerEndpoint
+    end
+
+    ConsumerEndpoint == "Google Andromeda SDN (Layer 4 Proxy)<br/>No VPC Peering • Zero Shared Routes" ==> PSCAttachment
+
+    subgraph ProducerVPC["Producer Enterprise VPC (10.0.0.0/16)"]
+        direction TB
+        PSCAttachment["Service Attachment<br/>psc-backend-service-attachment"]
+        PSCNATSubnet["Dedicated PSC NAT Subnet<br/>(10.90.0.0/24 - Translates Consumer IP)"]
+        ProducerILB["Internal Passthrough Load Balancer<br/>(VIP: 10.0.5.100)"]
+        ProducerPods["Target GKE Pod Replicas<br/>(10.4.1.0/24)"]
+
+        PSCAttachment --> PSCNATSubnet
+        PSCNATSubnet --> ProducerILB
+        ProducerILB --> ProducerPods
+    end
+
+    style ConsumerVPC fill:#e3f2fd,stroke:#1565c0
+    style ProducerVPC fill:#e8f5e9,stroke:#2e7d32
+    style PSCAttachment fill:#fff9c4,stroke:#fbc02d
+```
+
 ### A. Producer Side: Publish Service via Service Attachment
 
 ```bash
@@ -1156,6 +1259,32 @@ EOF
 ## 15. Zero-Trust Service Mesh & Kernel-Level WireGuard Encryption
 
 Enforces end-to-end cryptographic confidentiality and cryptographic workload identities across the container mesh.
+
+```mermaid
+graph LR
+    subgraph SrcNode["Source Node (10.0.0.15)"]
+        direction TB
+        App1["Frontend Pod"] -->|Plaintext HTTP| Envoy1["Envoy Sidecar Proxy<br/>(SPIFFE x509 Identity)"]
+        Envoy1 -->|Layer 7: TLS Encrypted| Kernel1["Linux Kernel Datapath v2<br/>(WireGuard wg0 Device)"]
+        Kernel1 -->|Layer 3: ChaCha20-Poly1305 Encrypted| Eth0_1["Node Physical eth0"]
+    end
+
+    Eth0_1 == "Google Cloud VPC Network<br/>(Opaque UDP/51820 WireGuard Tunnel)" ==> Eth0_2
+
+    subgraph DstNode["Destination Node (10.0.0.16)"]
+        direction TB
+        Eth0_2["Node Physical eth0"] -->|Kernel WireGuard Decrypt| Kernel2["Linux Kernel Datapath v2<br/>(Validates Cryptokey Routing)"]
+        Kernel2 -->|Layer 7 TLS Payload| Envoy2["Envoy Sidecar Proxy<br/>(Validates Client Cert & RBAC)"]
+        Envoy2 -->|Plaintext HTTP (Socket)| App2["Backend API Pod"]
+    end
+
+    style SrcNode fill:#e8eaf6,stroke:#3f51b5
+    style DstNode fill:#e8f5e9,stroke:#2e7d32
+    style Envoy1 fill:#fff3e0,stroke:#e65100
+    style Envoy2 fill:#fff3e0,stroke:#e65100
+    style Kernel1 fill:#ede7f6,stroke:#512da8
+    style Kernel2 fill:#ede7f6,stroke:#512da8
+```
 
 ### A. Kernel-Level Transparent WireGuard Encryption (eBPF / Cilium Datapath v2)
 
@@ -1394,7 +1523,47 @@ gcloud network-connectivity spokes linked-router-appliances create onprem-router
 
 In enterprise organizations, network infrastructure is governed centrally by Platform/NetOps in a **Host Project**, while autonomous developer teams deploy GKE clusters in **Service Projects** consuming centralized subnets without permissions to alter firewall rules or routing.
 
-```bash
+```mermaid
+graph TB
+    subgraph HostProject["CENTRAL HOST PROJECT (Project ID: host-network-project)"]
+        direction TB
+        HostAdmin["Platform / NetOps Team<br/>(Full Network Control)"]
+        VPCNet["Enterprise Production VPC Network"]
+        SharedSubnet["Shared Subnet: gke-us-central1-subnet<br/>(Primary: 10.0.0.0/20, Pods: 10.4.0.0/14, Svcs: 10.8.0.0/20)"]
+        Firewalls["Central Security Firewall Policies"]
+        CloudNATGW["Shared Cloud NAT Gateway"]
+
+        HostAdmin --> VPCNet
+        VPCNet --- SharedSubnet
+        VPCNet --- Firewalls
+        VPCNet --- CloudNATGW
+    end
+
+    SharedSubnet == "IAM Delegation: roles/compute.networkUser<br/>roles/container.hostServiceAgentUser" ==> ServiceGKE
+    SharedSubnet == "IAM Delegation: roles/compute.networkUser" ==> ServiceVMs
+
+    subgraph ServiceProject1["SERVICE PROJECT A: GKE Workloads (gke-workloads-project)"]
+        direction TB
+        GKEAdmin["App Dev Team (Zero Network Perms)"]
+        ServiceGKE["GKE Production Cluster<br/>(Worker Nodes lease IPs directly from Host Subnet!)"]
+        GKEPodsWorkload["Pods run on Host Secondary Range (10.4.0.0/14)"]
+        GKEAdmin --> ServiceGKE
+        ServiceGKE --- GKEPodsWorkload
+    end
+
+    subgraph ServiceProject2["SERVICE PROJECT B: Data Analytics (data-analytics-project)"]
+        direction TB
+        DataTeam["Data Engineering Team"]
+        ServiceVMs["Compute Engine VMs & Dataproc<br/>(VM eth0 leases IP from Host 10.0.0.0/20)"]
+        DataTeam --> ServiceVMs
+    end
+
+    style HostProject fill:#f3e5f5,stroke:#7b1fa2
+    style ServiceProject1 fill:#e8f5e9,stroke:#388e3c
+    style ServiceProject2 fill:#e1f5fe,stroke:#0288d1
+```
+
+### A. Shared VPC Host & Service Project Configuration Sequence
 # STEP 1: Enable Host Project (Run by Network Security Team)
 gcloud compute shared-vpc enable host-network-project-id
 
@@ -1424,7 +1593,31 @@ gcloud compute networks subnets add-iam-policy-binding gke-us-central1-subnet \
 
 Eliminates dangerous, exportable Google Cloud service account JSON private keys. Workload Identity binds a **Kubernetes ServiceAccount (KSA)** directly to a **Google Cloud IAM ServiceAccount (GSA)** using short-lived OIDC tokens.
 
-```bash
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Pod as Backend Pod (database-reader-ksa)
+    participant MetaServer as GKE Node Metadata Server (169.254.169.254)
+    participant K8sAPI as Kubernetes API Server (OIDC Provider)
+    participant GCPSTS as Google Cloud Security Token Service (STS)
+    participant GCPIAM as Google Cloud IAM (GSA Credentials API)
+    participant GCS as Google Cloud Storage (Bucket API)
+
+    Pod->>MetaServer: GET /computeMetadata/v1/instance/service-accounts/default/token
+    Note over MetaServer: Intercepts request via eBPF/iptables
+    MetaServer->>K8sAPI: Verify Pod KSA Projected Token (JWT)
+    K8sAPI-->>MetaServer: Token Valid (sub: production:database-reader-ksa)
+    MetaServer->>GCPSTS: Exchange K8s JWT for Federated GCP Token
+    GCPSTS-->>MetaServer: Returns Short-Lived Federated Token
+    MetaServer->>GCPIAM: Assume GSA (database-reader-gsa@project.iam.gserviceaccount.com)
+    Note over GCPIAM: Validates "roles/iam.workloadIdentityUser"<br/>binding for "production/database-reader-ksa"
+    GCPIAM-->>MetaServer: Returns Google OAuth2 Access Token (Valid 1 hour)
+    MetaServer-->>Pod: Injects Bearer Token into Pod Memory
+    Pod->>GCS: GET gs://company-secure-bucket/data.parquet (Bearer Token)
+    GCS-->>Pod: HTTP 200 OK (Authorized via GSA IAM Roles)
+```
+
+### A. Workload Identity Configuration & Binding Sequence
 # STEP 1: Create Google IAM Service Account (GSA) with Least Privilege
 gcloud iam service-accounts create database-reader-gsa \
   --display-name="GSA for Production Backend Database Reader" \
@@ -1536,7 +1729,53 @@ EOF
 
 The **Gateway API** replaces legacy `Ingress` and `BackendConfig` CRDs with an expressive, role-oriented standard for Layer 7 traffic routing, cross-namespace routing, and security policy attachment.
 
-```bash
+```mermaid
+graph TB
+    subgraph InfraRole["INFRASTRUCTURE PROVIDER (GCP / GKE)"]
+        GClass["GatewayClass: gke-l7-global-external-managed<br/>(Provisions Global External Application LB)"]
+    end
+
+    subgraph ClusterOperatorRole["CLUSTER OPERATOR / NETOPS (namespace: production)"]
+        Gateway["Gateway: enterprise-edge-gateway<br/>- Listener: HTTPS:443 (TLS Terminate)<br/>- allowedRoutes: namespaces.from: All"]
+        TLSCert["Certificate: production-tls-cert"]
+        Gateway --- TLSCert
+    end
+
+    GClass --> Gateway
+
+    subgraph AppTeam1["APPLICATION TEAM A (namespace: store)"]
+        direction TB
+        Route1["HTTPRoute: store-api-route<br/>Matches: /v1/store/*"]
+        Svc1["Service: store-service"]
+        Pods1["Store Pod Replicas (NEG)"]
+        Route1 --> Svc1 --> Pods1
+    end
+
+    subgraph AppTeam2["APPLICATION TEAM B (namespace: auth)"]
+        direction TB
+        Route2["HTTPRoute: auth-api-route<br/>Matches: /v1/auth/*"]
+        Svc2["Service: auth-service"]
+        Pods2["Auth Pod Replicas (NEG)"]
+        Route2 --> Svc2 --> Pods2
+    end
+
+    subgraph SecurityRole["SECOPS POLICY ATTACHMENT"]
+        Policy["GCPBackendPolicy: gateway-security-policy<br/>Cloud Armor WAF: edge-waf-security-policy"]
+    end
+
+    Gateway == "Cross-Namespace Attachment" ==> Route1
+    Gateway == "Cross-Namespace Attachment" ==> Route2
+    Policy -. "Enforces WAF Rules" .-> Svc1
+    Policy -. "Enforces WAF Rules" .-> Svc2
+
+    style InfraRole fill:#f5f5f5,stroke:#9e9e9e
+    style ClusterOperatorRole fill:#e1f5fe,stroke:#0288d1
+    style AppTeam1 fill:#e8f5e9,stroke:#388e3c
+    style AppTeam2 fill:#fff3e0,stroke:#f57c00
+    style SecurityRole fill:#fce4ec,stroke:#c2185b
+```
+
+### A. Declarative Gateway & HTTPRoute Manifests
 kubectl apply -f - <<'EOF'
 # ── GATEWAY (INFRASTRUCTURE DEFINITION - MANAGED BY NETOPS) ───────────────
 apiVersion: gateway.networking.k8s.io/v1
@@ -1622,6 +1861,26 @@ EOF
 ## 24. NodeLocal DNSCache & Dynamic Secondary Range Capacity Planning
 
 High-throughput container platforms frequently face **DNS throttling** and **IP exhaustion**. These two mechanisms protect large-scale production clusters.
+
+```mermaid
+graph TD
+    subgraph ClassicProblem["CLASSIC PROBLEM: CoreDNS UDP Conntrack Exhaustion"]
+        PodOld["Kubernetes Pod"] -->|UDP DNS Query| KubeProxy["kube-proxy iptables DNAT<br/>(ClusterIP: 10.8.0.10:53)"]
+        KubeProxy -->|Creates Conntrack Entry| ConntrackTable["Linux Netfilter Conntrack Table<br/>(Exhaustion & Race Conditions!)"]
+        ConntrackTable -. "Dropped Packets / Table Full" .-> Timeout["5-Second DNS Lookup Timeouts / Failures"]
+        ConntrackTable -->|Forward across Node| CoreDNSPod["CoreDNS Pod Replica"]
+    end
+
+    subgraph NodeLocalSolution["ENTERPRISE SOLUTION: NodeLocal DNSCache (169.254.20.10)"]
+        PodNew["Kubernetes Pod"] -->|Direct Loopback Query| LocalCache["NodeLocal DNSCache Agent<br/>(Runs on Node Host: 169.254.20.10)"]
+        LocalCache -- "Cache Hit (0.1ms)" --> InstantResponse["Instant Resolution (Zero Netfilter DNAT!)"]
+        LocalCache -- "Cache Miss" --> TCPCoreDNS["Persistent Single TCP Stream<br/>(Zero UDP Drops)"]
+        TCPCoreDNS --> CoreDNSUpstream["CoreDNS Deployment → Cloud DNS Upstream"]
+    end
+
+    style ClassicProblem fill:#ffebee,stroke:#c62828
+    style NodeLocalSolution fill:#e8f5e9,stroke:#2e7d32
+```
 
 ### A. Deploy NodeLocal DNSCache DaemonSet (Eliminating Conntrack Bottlenecks)
 
@@ -1726,6 +1985,36 @@ A classic enterprise networking failure: Packets pass fine under small pings, bu
 | **Google Cloud VPC Network** | **1460 bytes** | None | 1420 bytes |
 | **Cloud Interconnect (VLAN Attachment)**| **1440 or 1500 bytes** | 802.1Q tag (4 bytes) | 1400 / 1460 bytes |
 | **Cloud HA VPN (IPsec ESP Encapsulation)**| **1460 bytes link** | **ESP / IV / Auth: ~60 bytes** | **Clamp to 1360 bytes!** |
+
+```mermaid
+graph TD
+    subgraph StandardPacket["Standard Ethernet Packet (1500 Bytes)"]
+        IP1["IPv4 Header<br/>(20 Bytes)"] --- TCP1["TCP Header<br/>(20 Bytes)"] --- Data1["Application Payload (MSS)<br/>(1460 Bytes)"]
+    end
+
+    subgraph VPCPacket["Google Cloud VPC Packet (Max MTU: 1460 Bytes)"]
+        IP2["IPv4 Header<br/>(20 Bytes)"] --- TCP2["TCP Header<br/>(20 Bytes)"] --- Data2["Safe Payload (MSS)<br/>(1420 Bytes)"]
+    end
+
+    subgraph VPNPacket["IPsec ESP Encapsulated Packet (Causes Fragmentation!)"]
+        OuterIP["Outer IPv4 Header<br/>(20 Bytes)"] --- ESP["IPsec ESP Header + IV<br/>(16 Bytes)"] --- InnerPacket["Inner Original Packet<br/>(1460 Bytes)"] --- ESPOther["ESP Trailer + ICV Auth<br/>(24 Bytes)"]
+        NoteOverhead["Total: 1520 Bytes! Exceeds 1460 MTU!<br/>Result: Dropped if DF (Don't Fragment) bit is set!"]
+    end
+
+    subgraph MSSClampedPacket["SOLUTION: TCP MSS Clamping to 1360 Bytes"]
+        OuterIP_OK["Outer IPv4 (20B)"] --- ESP_OK["ESP + IV (16B)"] --- InnerIP_OK["Inner IPv4 (20B)"] --- InnerTCP_OK["Inner TCP (20B)"] --- ClampedPayload["Clamped Payload (MSS: 1360B)"] --- ESPOther_OK["Trailer (24B)"]
+        NoteOK["Total: 1460 Bytes (Exact Match for VPC Link! Zero Drops!)"]
+    end
+
+    StandardPacket -. "Crosses VPC Boundary" .-> VPCPacket
+    VPCPacket -. "Crosses IPsec VPN Tunnel without MSS Clamping" .-> VPNPacket
+    VPNPacket -. "Apply TCP MSS Clamping = 1360" .-> MSSClampedPacket
+
+    style StandardPacket fill:#e3f2fd,stroke:#1565c0
+    style VPCPacket fill:#fff3e0,stroke:#f57c00
+    style VPNPacket fill:#ffebee,stroke:#c62828
+    style MSSClampedPacket fill:#e8f5e9,stroke:#2e7d32
+```
 
 **How to Enforce MSS Clamping on Cloud Router**:
 ```bash
