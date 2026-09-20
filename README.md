@@ -43,6 +43,7 @@ gcd/
 │   ├── hld-lld-design.md             # Control Plane Architecture & Pod Lifecycle State Machine
 │   ├── decision-tree.md              # ASCII & Visual Decision Trees (Workload Controllers & Services)
 │   ├── shell-commands.md             # In-Depth CLI Manual & Error Matrix (`kubectl`)
+│   ├── networking-shell-command.md   # Unified Networking Manual: Docker, CNI & GCP VPC Underlay
 │   └── references.md                 # Official Kubernetes Documentation Links & Best Practices
 │
 ├── bigquery/                         # Feature 5: BigQuery (Enterprise Data Warehouse)
@@ -116,6 +117,7 @@ gcd/
 * **[HLD & LLD Design (`kubernetes/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/kubernetes/hld-lld-design.md)**
 * **[ASCII & Visual Decision Trees (`kubernetes/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/kubernetes/decision-tree.md)**
 * **[Shell Command Reference & Failure Resolutions (`kubernetes/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/kubernetes/shell-commands.md)**
+* **[Unified Networking Manual: Docker, CNI & GCP VPC (`kubernetes/networking-shell-command.md`)](file:///home/btpl-lap-22/live/gcd/kubernetes/networking-shell-command.md)**
 * **[Official References & Links (`kubernetes/references.md`)](file:///home/btpl-lap-22/live/gcd/kubernetes/references.md)**
 
 ---

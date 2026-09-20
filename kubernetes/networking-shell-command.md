@@ -615,6 +615,7 @@ gcloud compute firewall-rules create allow-gke-master-to-nodes \
   --source-ranges=172.16.0.0/28 \
   # CIDR: Private Control Plane master CIDR block allocated during GKE cluster creation.
   --target-tags=gke-node
+```
 
 > [!NOTE]
 > **Health Check CIDR Verification**: The source ranges `35.191.0.0/16` and `130.211.0.0/22` apply to Classic LBs and Global External Application LBs. Regional LBs and Envoy proxy-based load balancers may probe backends from dedicated regional proxy-only subnets (`--purpose=REGIONAL_MANAGED_PROXY`). Always verify active health check sources against current Google documentation.
@@ -721,6 +722,8 @@ graph TB
    - On Node 2, the ingress eBPF program at the `tc` hook checks whether Identity `ID-1042` is permitted to connect to Pod B's port `8080` in the `cilium_policy` map. If unauthorized, eBPF executes `TC_ACT_SHOT` to drop the packet instantly at the NIC driver level before it can consume any guest host resources.
 
 ### A. Micro-Segmentation NetworkPolicy (Ingress & Egress)
+
+```bash
 kubectl apply -f - <<'EOF'
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -2233,6 +2236,8 @@ graph TB
    - The load balancer splits requests at the Google Front End proxy layer before packets even reach the cluster nodes.
 
 ### A. Declarative Gateway & HTTPRoute Manifests
+
+```bash
 kubectl apply -f - <<'EOF'
 # ── GATEWAY (INFRASTRUCTURE DEFINITION - MANAGED BY NETOPS) ───────────────
 apiVersion: gateway.networking.k8s.io/v1
