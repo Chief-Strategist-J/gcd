@@ -8,34 +8,116 @@ Every command is written in modular sections (`# ── SECTION ──`) with ex
 
 ## High-Level Networking Architecture: How the 3 Layers Connect
 
+```mermaid
+graph TB
+    subgraph VPC["Layer 1: Google Cloud VPC Infrastructure (10.0.0.0/16)"]
+        direction TB
+        SubnetNode["Primary Subnet: Worker Nodes & VMs<br/>10.0.0.0/20 (4,096 IPs)"]
+        SubnetPod["Secondary Subnet 1: GKE Pod CIDR<br/>10.4.0.0/14 (262,144 IPs)"]
+        SubnetSvc["Secondary Subnet 2: GKE Services ClusterIP<br/>10.8.0.0/20 (4,096 VIPs)"]
+        CloudNAT["Cloud NAT Gateway<br/>Outbound Internet Egress (No Public IPs)"]
+        TransitRouter["Cloud Router / HA VPN / Interconnect<br/>BGP Transit to On-Prem / Other VPCs"]
+        
+        SubnetNode -. "Egress Web" .-> CloudNAT
+        SubnetPod -. "Egress Web" .-> CloudNAT
+        SubnetNode --- TransitRouter
+    end
+
+    subgraph K8S["Layer 2: Kubernetes CNI & Workload Orchestration"]
+        direction TB
+        NodeNIC["Node Interface: eth0 (e.g. 10.0.0.15)"]
+        CNI["CNI Datapath v2 / Cilium (eBPF Engine)"]
+        CoreDNS["CoreDNS / NodeLocal DNSCache (169.254.20.10)"]
+        NetPol["NetworkPolicy Engine<br/>Layer 3/4 Micro-segmentation (Default Deny)"]
+        SvcVIP["Service Virtual IP: ClusterIP (e.g. 10.8.0.100)"]
+        PodNet["Pod Network Namespace (veth pair)<br/>IP: 10.4.1.24"]
+
+        NodeNIC --- CNI
+        CNI --- PodNet
+        CNI --- SvcVIP
+        PodNet --> NetPol
+        PodNet -. "DNS UDP/53" .-> CoreDNS
+    end
+
+    subgraph DOCKER["Layer 3: Docker Container Engine (Host / Local)"]
+        direction TB
+        DockerBridge["docker0 / Custom Bridge (e.g. 172.28.0.0/16)"]
+        DockerHost["Host Networking Mode (Direct eth0 Access)"]
+        ContainerNS["Container Network Namespace (eth0 -> vethX)"]
+
+        DockerBridge --- ContainerNS
+        DockerHost --- ContainerNS
+    end
+
+    SubnetNode === NodeNIC
+    SubnetPod === PodNet
+    SubnetSvc === SvcVIP
+    NodeNIC === DockerHost
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│ LAYER 1: GOOGLE CLOUD VPC INFRASTRUCTURE                                 │
-│ VPC Network: 10.0.0.0/16                                                 │
-│  ├── Primary Subnet (GKE Worker Nodes & VMs): 10.0.0.0/20                │
-│  ├── Secondary Subnet 1 (Kubernetes Pod CIDR): 10.4.0.0/14               │
-│  ├── Secondary Subnet 2 (Kubernetes Service ClusterIP CIDR): 10.8.0.0/20 │
-│  ├── Cloud NAT Gateway: Outbound egress (no public IPs on nodes/pods)   │
-│  └── Cloud Router / HA VPN / VPC Peering: Transit to other VPCs/On-Prem  │
-└────────────────────────────────────┬─────────────────────────────────────┘
-                                     │
-┌────────────────────────────────────▼─────────────────────────────────────┐
-│ LAYER 2: KUBERNETES CNI & WORKLOAD NETWORKING                            │
-│  ├── Node eth0 (e.g. 10.0.0.15) bound to VPC Subnet                      │
-│  ├── CNI Plugin (Calico / Cilium / GKE Datapath v2 with eBPF)            │
-│  ├── Pod Network Namespace (veth pair -> Pod IP e.g. 10.4.1.24)          │
-│  ├── ClusterIP Service (iptables / eBPF Virtual IP e.g. 10.8.0.100)      │
-│  ├── Kube-DNS / CoreDNS (10.8.0.10) resolves internal domain names       │
-│  └── NetworkPolicies (Ingress & Egress Layer 3/4 Micro-segmentation)     │
-└────────────────────────────────────┬─────────────────────────────────────┘
-                                     │
-┌────────────────────────────────────▼─────────────────────────────────────┐
-│ LAYER 3: DOCKER CONTAINER ENGINE (LOCAL / HOST NETWORKING)               │
-│  ├── bridge (docker0, default 172.17.0.0/16)                             │
-│  ├── Custom user-defined bridge (isolated subnets with internal DNS)     │
-│  ├── host mode (shares host network stack, eliminates NAT overhead)      │
-│  └── overlay (cross-host multi-daemon VXLAN encapsulation)               │
-└──────────────────────────────────────────────────────────────────────────┘
+
+---
+
+## Detailed Traffic Flow Architecture
+
+### 1. Ingress Flow: Public Internet → Cloud Armor WAF → Global Load Balancer → GKE Pod
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as External User
+    participant Armor as Cloud Armor WAF
+    participant GLB as Global HTTPS Load Balancer
+    participant Gateway as GKE Gateway API
+    participant Firewall as VPC Firewall Rules
+    participant NEG as Network Endpoint Group (NEG)
+    participant NetPol as K8s NetworkPolicy
+    participant Pod as Backend Pod (10.4.1.24)
+
+    Client->>Armor: HTTPS Request (api.company.com:443)
+    Note over Armor: Evaluates Rate Limits (100 req/min)<br/>Evaluates OWASP CRS (SQLi, XSS, RCE)
+    alt Malicious Request / Threshold Exceeded
+        Armor-->>Client: 403 Forbidden / 429 Too Many Requests
+    else Legitimate Traffic
+        Armor->>GLB: Forward Request
+        GLB->>Gateway: Match Hostname & Path in HTTPRoute
+        Note over GLB,Gateway: SSL Termination & URL Rewrite
+        GLB->>Firewall: Health Check Probe & Forward
+        Note over Firewall: Checks Health-Check CIDRs<br/>(35.191.0.0/16, 130.211.0.0/22)
+        Firewall->>NEG: Direct Routing to Target Pod IP
+        Note over NEG: Bypasses kube-proxy DNAT hop!<br/>Direct L4 delivery to Pod IP
+        NEG->>NetPol: Ingress Micro-segmentation Check
+        alt Blocked by NetworkPolicy
+            NetPol--xPod: Packet Dropped (Default-Deny)
+        else Permitted by Ingress Rule
+            NetPol->>Pod: Deliver to TCP 8080 Socket
+            Pod-->>Client: HTTP 200 OK (Preserved True Client IP)
+        end
+    end
+```
+
+### 2. Egress Flow: Pod → VPC Firewall → Cloud NAT / Cloud Router / Interconnect
+
+```mermaid
+graph TD
+    Pod["Kubernetes Pod<br/>(IP: 10.4.1.24)"] --> NetPolCheck{"Kubernetes Egress<br/>NetworkPolicy?"}
+
+    NetPolCheck -- Denied --> Drop1["Drop Packet at Pod veth (Default Deny)"]
+    NetPolCheck -- Allowed --> eBPF["Linux Kernel eBPF Engine<br/>Transfers packet to Node eth0"]
+
+    eBPF --> VPCFirewall{"VPC Egress Firewall<br/>Priority 1000 Allow vs 65534 Deny"}
+    VPCFirewall -- Denied (Unauthorized Destination) --> Drop2["Drop Packet at Cloud Hypervisor"]
+    VPCFirewall -- Allowed --> RouteTable{"VPC Route Table<br/>Destination CIDR Match"}
+
+    RouteTable -- "0.0.0.0/0 (Public Internet)" --> CloudNAT["Cloud NAT Gateway<br/>Translates Pod IP to NAT Pool External IP"]
+    CloudNAT --> Internet["External Public APIs / Mirrors"]
+
+    RouteTable -- "192.168.0.0/16 (Corporate On-Prem)" --> CloudRouter["Cloud Router BGP Decision"]
+    
+    CloudRouter -- "Primary Link (MED Priority = 100)" --> Interconnect["Dedicated Cloud Interconnect<br/>10G/100G Fiber Link (Sub-millisecond)"]
+    CloudRouter -- "Standby Failover (MED Priority = 300)" --> HAVPN["Cloud HA VPN<br/>IPsec Encapsulation (MSS Clamped: 1360)"]
+
+    Interconnect --> OnPrem["On-Premises Enterprise Data Center"]
+    HAVPN --> OnPrem
 ```
 
 ---
@@ -293,7 +375,37 @@ gcloud compute routers nats create production-cloud-nat \
 
 ## 4. VPC Firewall Rules for Kubernetes Clusters & Microservices
 
-Google Cloud VPC firewalls are **stateful** (return traffic is automatically permitted). Default VPC posture blocks all inbound ingress.
+Google Cloud VPC firewalls are **stateful** (return traffic is automatically permitted by the connection tracking engine). Default VPC posture blocks all inbound ingress.
+
+```mermaid
+graph TD
+    InPacket["Inbound Packet Arrives at Host NIC"] --> Conntrack{"Existing Connection<br/>in State Table?"}
+
+    Conntrack -- Yes (Return Traffic) --> AllowDirect["Allow Immediately<br/>(Bypasses Firewall Evaluation)"]
+    Conntrack -- No (New Connection) --> OrgPolicy{"Hierarchical Org Firewall<br/>(Priority 0 - 999)"}
+
+    OrgPolicy -- Denied --> DropOrg["Drop Packet (Org Level Policy)"]
+    OrgPolicy -- Allowed / Delegate --> VPCFirewall{"VPC Network Firewalls<br/>(Evaluated by Priority: 0 → 65535)"}
+
+    VPCFirewall --> RuleMatch{"Rule Attributes Match?<br/>- Source IP CIDR<br/>- Protocols & Ports<br/>- Target Tags / SAs"}
+
+    RuleMatch -- No Match --> NextRule["Evaluate Next Priority Rule"]
+    NextRule --> VPCFirewall
+
+    RuleMatch -- Match: Action = DENY --> DropVPC["Drop Packet (Log to Cloud Logging)"]
+    RuleMatch -- Match: Action = ALLOW --> AllowVPC["Create Connection in State Table"]
+
+    AllowVPC --> K8sNode["Pass Packet to Node Kernel (iptables / eBPF)"]
+    K8sNode --> NetPolCheck{"Kubernetes NetworkPolicy<br/>Ingress Evaluation"}
+    NetPolCheck -- Allowed --> PodApp["Deliver to Container TCP Socket"]
+    NetPolCheck -- Denied --> DropK8s["Drop Packet at Pod Interface"]
+
+    style InPacket fill:#e3f2fd,stroke:#1565c0
+    style AllowDirect fill:#e8f5e9,stroke:#2e7d32
+    style DropVPC fill:#ffebee,stroke:#c62828
+    style DropK8s fill:#ffebee,stroke:#c62828
+    style PodApp fill:#e8f5e9,stroke:#2e7d32
+```
 
 ### A. Allow Internal Cluster East-West Traffic (Node-to-Node & Pod-to-Pod)
 
@@ -553,6 +665,28 @@ gcloud compute networks peerings create shared-to-prod-peering \
 
 > [!CAUTION]
 > **VPC Peering Non-Transitivity Landmine**: VPC Peering is strictly **non-transitive**. If `VPC-A` peers with `VPC-B`, and `VPC-B` peers with `VPC-C`, workloads in `VPC-A` **CANNOT** reach `VPC-C` through `VPC-B`! Google Cloud drops transit packets at the hypervisor. For transit hub topologies connecting dozens of VPCs and on-premises sites without full pairwise mesh limits, deploy **Network Connectivity Center (NCC)** (see Section 19).
+
+```mermaid
+graph TD
+    subgraph NonTransitive["The VPC Peering Non-Transitivity Landmine"]
+        VPCA["VPC-A<br/>(10.1.0.0/16)"] <== "Direct Peering A ↔ B (Allowed)" ==> VPCB["VPC-B (Transit Attempt)<br/>(10.2.0.0/16)"]
+        VPCB <== "Direct Peering B ↔ C (Allowed)" ==> VPCC["VPC-C<br/>(10.3.0.0/16)"]
+        VPCA -. "x Transit Traffic Blocked by Hypervisor! x<br/>(A cannot reach C through B)" .-x VPCC
+    end
+
+    subgraph NCCTransit["The Network Connectivity Center (NCC) Solution"]
+        Hub["NCC Global Transit Hub<br/>(Centralized Routing Fabric)"]
+        SpokeA["Spoke: VPC-A"] === Hub
+        SpokeB["Spoke: VPC-B"] === Hub
+        SpokeC["Spoke: VPC-C"] === Hub
+        HybridSpoke["Spoke: Hybrid WAN / Interconnect"] === Hub
+        
+        SpokeA <== "Full Any-to-Any Transit Enabled" ==> SpokeC
+    end
+
+    style NonTransitive fill:#ffebee,stroke:#c62828
+    style NCCTransit fill:#e8f5e9,stroke:#2e7d32
+```
 
 ---
 
@@ -1085,21 +1219,28 @@ EOF
 
 For multi-region disaster recovery, Multi-Cluster Ingress (MCI) and Multi-Cluster Services (MCS) route incoming user traffic across active clusters in `us-central1` and `europe-west1` via a single global Anycast VIP.
 
-```
-                  ┌────────────────────────────────────────┐
-                  │    Global Anycast Virtual IP (VIP)     │
-                  │              34.120.50.10              │
-                  └───────────────────┬────────────────────┘
-                                      │
-                 ┌────────────────────┴────────────────────┐
-                 │ Google Cloud Global HTTPS Load Balancer │
-                 └──────────┬────────────────────┬─────────┘
-                            │ (Latency-based)    │ (Cross-region failover)
-             ┌──────────────▼──────────┐ ┌───────▼─────────────────┐
-             │ CLUSTER 1: us-central1  │ │ CLUSTER 2: europe-west1 │
-             │  ├── Pod Replicas       │ │  ├── Pod Replicas       │
-             │  └── MultiClusterService│ │  └── MultiClusterService│
-             └─────────────────────────┘ └─────────────────────────┘
+```mermaid
+graph TB
+    User["Global User Client"] --> AnycastVIP["Google Anycast Global VIP<br/>(34.120.50.10)"]
+    
+    AnycastVIP --> GLB["Google Cloud Global HTTPS Load Balancer<br/>MultiClusterIngress (MCI)"]
+
+    subgraph REGION1["Region 1: us-central1"]
+        MCI1["MultiClusterService (MCS)"]
+        GKE1["GKE Cluster 1 (Active)"]
+        Pods1["Pod Replicas (us-central1)"]
+        MCI1 --> GKE1 --> Pods1
+    end
+
+    subgraph REGION2["Region 2: europe-west1"]
+        MCI2["MultiClusterService (MCS)"]
+        GKE2["GKE Cluster 2 (Active / DR)"]
+        Pods2["Pod Replicas (europe-west1)"]
+        MCI2 --> GKE2 --> Pods2
+    end
+
+    GLB -- "Primary Latency-Based Routing" --> MCI1
+    GLB -- "Automatic Cross-Region Failover" --> MCI2
 ```
 
 ### A. Deploy MultiClusterService (MCS) Across All Member Clusters
@@ -1146,24 +1287,30 @@ EOF
 
 When enterprise workloads require guaranteed private bandwidth (10 Gbps or 100 Gbps circuits), predictable single-digit millisecond latency, and physical isolation, **Cloud Interconnect** replaces IPsec over public internet. Combining Interconnect with Cloud HA VPN delivers an active-passive **99.99% availability topology**.
 
-```
-                           ┌────────────────────────────────────────┐
-                           │      On-Premises Data Center / WAN     │
-                           └──────┬──────────────────────────┬──────┘
-                                  │                          │
-           Primary (Active):      │                          │ Secondary (Standby):
-           10G/100G Interconnect  │                          │ Cloud HA VPN (IPsec)
-           BGP Route Priority: 100│                          │ BGP Route Priority: 300
-                                  │                          │
-                           ┌──────▼──────────────────────────▼──────┐
-                           │  Google Cloud Edge / Cloud Router BGP   │
-                           │  (Sub-second failover if link drops)   │
-                           └──────────────────┬─────────────────────┘
-                                              │
-                           ┌──────────────────▼─────────────────────┐
-                           │      Enterprise Production VPC         │
-                           │  (GKE Nodes, Pods, Services, Databases)│
-                           └────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph ONPREM["On-Premises Corporate Data Center"]
+        OnPremRouter["Edge Core Router (BGP ASN 65002)"]
+    end
+
+    subgraph GCP["Google Cloud Platform (VPC 10.0.0.0/16)"]
+        direction TB
+        CloudRouter["Cloud Router (BGP ASN 65001)<br/>BFD Sub-Second Failure Detection (900ms)"]
+        
+        subgraph WORKLOADS["Production GKE Infrastructure"]
+            GKENodes["GKE Worker Nodes (10.0.0.0/20)"]
+            GKEPods["Kubernetes Pods (10.4.0.0/14)"]
+        end
+    end
+
+    OnPremRouter == "Primary: 10G/100G Dedicated Interconnect<br/>BGP Advertised Priority = 100 (Active Traffic)" ==> CloudRouter
+    OnPremRouter -. "Standby: Cloud HA VPN (IPsec IKEv2)<br/>BGP Advertised Priority = 300 (Hot Standby)" .-> CloudRouter
+
+    CloudRouter === GKENodes
+    GKENodes === GKEPods
+
+    style OnPremRouter fill:#f9f,stroke:#333,stroke-width:2px
+    style CloudRouter fill:#bbf,stroke:#333,stroke-width:2px
 ```
 
 ### A. Create Interconnect VLAN Attachment (`gcloud compute interconnects attachments dedicated create`)
@@ -1608,20 +1755,20 @@ Monitor these hard thresholds in Cloud Monitoring before launching massive multi
 
 When communication fails between Docker containers, Kubernetes Pods, and Cloud VPC resources, follow this systematic multi-layer diagnostic sequence:
 
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│              CROSS-LAYER CONNECTIVITY TROUBLESHOOTING MAP                │
-└──────────────────────────────────────────────────────────────────────────┘
- [ Docker Container ]  ──(1: veth / bridge)──>  [ Host / K8s Node ]
-         │                                              │
-         ▼                                              ▼
- [ Pod (CNI Calico/Cilium) ]  ──(2: NetworkPolicy)──> [ VPC Subnet (Primary) ]
-         │                                              │
-         ▼                                              ▼
- [ Service ClusterIP (kube-proxy) ] ──(3: Firewall)─> [ Cloud Router / NAT ]
-         │                                              │
-         ▼                                              ▼
- [ Cloud Load Balancer (ILB) ] ──(4: Peering/VPN)───> [ Remote VPC / On-Prem ]
+```mermaid
+graph LR
+    Container["Docker Container<br/>(veth / bridge)"] -->|Hop 1: CNI| Host["Host / K8s Worker Node<br/>(eth0: 10.0.0.15)"]
+    Host -->|Hop 2: NetworkPolicy| Pod["Pod CNI Namespace<br/>(10.4.1.24)"]
+    Pod -->|Hop 3: VPC Firewall| Subnet["VPC Primary Subnet<br/>(10.0.0.0/20)"]
+    Subnet -->|Hop 4: Route Table| NATRouter["Cloud NAT / Router<br/>(Egress Gateway)"]
+    NATRouter -->|Hop 5: Interconnect / VPN / Peering| Remote["Remote VPC / On-Premises<br/>(192.168.0.0/16)"]
+
+    style Container fill:#e1f5fe,stroke:#0288d1
+    style Pod fill:#e8f5e9,stroke:#388e3c
+    style Host fill:#fff3e0,stroke:#f57c00
+    style Subnet fill:#ede7f6,stroke:#512da8
+    style NATRouter fill:#fce4ec,stroke:#c2185b
+    style Remote fill:#eceff1,stroke:#455a64
 ```
 
 ### Diagnostic One-Liners:
