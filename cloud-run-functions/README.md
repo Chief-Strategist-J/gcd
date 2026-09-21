@@ -11,6 +11,7 @@ Welcome to the dedicated documentation index for **Google Cloud Run Functions** 
 | **Architecture (HLD & LLD)** | [`hld-lld-design.md`](./hld-lld-design.md) | High-Level Architecture (Serverless Event-Driven Topology, Cloud Build, Artifact Registry, Cloud Run runtime) & Low-Level Design (Buildpack containerization, Gen 1 vs Gen 2 differences, IAM Service Agent delegation, and Cloud Logging build pipelines). |
 | **Decision Trees** | [`decision-tree.md`](./decision-tree.md) | ASCII & Visual Mermaid decision trees for Deployment Source Strategy (Local Directory vs Cloud Storage ZIP vs Cloud Source Repositories/GitHub vs Console Inline Editor), Deployment Tooling, and Trigger Architectures (HTTP vs Eventarc). |
 | **CLI Commands & Error Matrix** | [`shell-commands.md`](./shell-commands.md) | Comprehensive `gcloud functions deploy` command manual, deep flag breakdown (`--gen2`, `--source`, `--entry-point`, `--runtime`, `--stage-bucket`), `.gcloudignore` syntax, IAM role assignments, and an exhaustive Troubleshooting Error Matrix. |
+| **Triggers, VPC & Workflows** | [`triggers-vpc-workflows.md`](./triggers-vpc-workflows.md) | In-depth manual covering HTTP and 90+ Eventarc event triggers (Pub/Sub, Storage, Firestore document-level rules, Firebase), 1:1 trigger binding vs 1:N fanout, VPC Ingress/Egress, and Google Cloud Workflows orchestration. |
 | **Case Studies & Hands-On Labs** | [`casestudy/README.md`](./casestudy/README.md) | End-to-end hands-on lab blueprint covering HTTP functions, Cloud Storage event triggers via Eventarc, Functions Framework unit testing with Mocha/Sinon, and immutable revision traffic management. |
 | **Official References** | [`references.md`](./references.md) | Official Google Cloud Run Functions documentation links, Cloud Buildpack specs, Eventarc integrations, IAM security guides, and runtime lifecycle references. |
 
@@ -45,5 +46,6 @@ Welcome to the dedicated documentation index for **Google Cloud Run Functions** 
 1. [View High-Level & Low-Level Design (`hld-lld-design.md`)](./hld-lld-design.md)
 2. [View Decision Trees (`decision-tree.md`)](./decision-tree.md)
 3. [View Shell Command Reference & Error Matrix (`shell-commands.md`)](./shell-commands.md)
-4. [View Case Studies & Hands-On Labs (`casestudy/README.md`)](./casestudy/README.md)
-5. [View Official Reference Links (`references.md`)](./references.md)
+4. [View Triggers, VPC Networking & Workflows (`triggers-vpc-workflows.md`)](./triggers-vpc-workflows.md)
+5. [View Case Studies & Hands-On Labs (`casestudy/README.md`)](./casestudy/README.md)
+6. [View Official Reference Links (`references.md`)](./references.md)

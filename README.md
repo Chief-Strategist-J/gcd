@@ -80,6 +80,7 @@ gcd/
 │   │   ├── README.md                 # Case Studies & Hands-On Labs Sitemap
 │   │   └── http-and-cloud-storage-event-functions-lab.md # Lab: HTTP & GCS Event Functions with Revisions
 │   ├── hld-lld-design.md             # Serverless Architecture & Buildpack Containerization
+│   ├── triggers-vpc-workflows.md     # In-Depth Triggers, VPC Networking & Workflows Architecture
 │   ├── decision-tree.md              # Source Location & Deployment Tooling Decision Trees
 │   ├── shell-commands.md             # In-Depth CLI Manual & Error Matrix (`gcloud functions`)
 │   └── references.md                 # Official Cloud Run Functions Documentation Links
@@ -168,6 +169,7 @@ gcd/
 * **[Case Studies & Hands-On Labs Index (`cloud-run-functions/casestudy/README.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/casestudy/README.md)**
 * **[Hands-On Lab: HTTP & GCS Event Functions with Revisions (`cloud-run-functions/casestudy/http-and-cloud-storage-event-functions-lab.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/casestudy/http-and-cloud-storage-event-functions-lab.md)**
 * **[HLD & LLD Design (`cloud-run-functions/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/hld-lld-design.md)**
+* **[Triggers, VPC Networking & Workflows Manual (`cloud-run-functions/triggers-vpc-workflows.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/triggers-vpc-workflows.md)**
 * **[ASCII & Visual Decision Trees (`cloud-run-functions/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/decision-tree.md)**
 * **[Shell Command Reference & Failure Resolutions (`cloud-run-functions/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/shell-commands.md)**
 * **[Official References & Links (`cloud-run-functions/references.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/references.md)**
