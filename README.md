@@ -74,6 +74,13 @@ gcd/
 │   ├── shell-commands.md             # In-Depth CLI Manual & Error Matrix (`gcloud firestore`)
 │   └── references.md                 # Official Firestore Documentation Links & Best Practices
 │
+├── cloud-run-functions/              # Feature 9: Cloud Run Functions (Serverless Compute)
+│   ├── README.md                     # Cloud Run Functions Feature Index
+│   ├── hld-lld-design.md             # Serverless Architecture & Buildpack Containerization
+│   ├── decision-tree.md              # Source Location & Deployment Tooling Decision Trees
+│   ├── shell-commands.md             # In-Depth CLI Manual & Error Matrix (`gcloud functions`)
+│   └── references.md                 # Official Cloud Run Functions Documentation Links
+│
 └── README.md                         # Master Workspace Index (This File)
 ```
 
@@ -151,5 +158,14 @@ gcd/
 * **[ASCII & Visual Decision Trees (`firestore/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/firestore/decision-tree.md)**
 * **[Shell Command Reference & Verification Manual (`firestore/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/firestore/shell-commands.md)**
 * **[Official References & Links (`firestore/references.md`)](file:///home/btpl-lap-22/live/gcd/firestore/references.md)**
+
+---
+
+### Feature 9: Cloud Run Functions (`/cloud-run-functions/`)
+* **[HLD & LLD Design (`cloud-run-functions/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/hld-lld-design.md)**
+* **[ASCII & Visual Decision Trees (`cloud-run-functions/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/decision-tree.md)**
+* **[Shell Command Reference & Failure Resolutions (`cloud-run-functions/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/shell-commands.md)**
+* **[Official References & Links (`cloud-run-functions/references.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/references.md)**
+
 
 
