@@ -9,6 +9,7 @@ Welcome to the **Cloud Run Functions Case Studies & Hands-On Labs** directory. T
 | Lab / Case Study | Documentation File | Description & Architecture Focus |
 | :--- | :--- | :--- |
 | **Lab 1: HTTP & Cloud Storage Event Functions with Revisions** | [`http-and-cloud-storage-event-functions-lab.md`](./http-and-cloud-storage-event-functions-lab.md) | Full hands-on lab covering Functions Framework HTTP endpoints, Cloud Storage event triggers via Eventarc, unit testing with Mocha/Sinon, and immutable revision traffic splitting. |
+| **Lab 2: Serverless VPC Access, Memorystore Redis & Internal VM** | [`vpc-connector-redis-and-internal-vm-lab.md`](./vpc-connector-redis-and-internal-vm-lab.md) | Full hands-on lab covering Serverless VPC Access connector setup (`/28` CIDR range), Memorystore for Redis private caching, Pub/Sub event ingestion, and private Compute Engine internal IP routing. |
 
 ---
 

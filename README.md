@@ -78,7 +78,8 @@ gcd/
 │   ├── README.md                     # Cloud Run Functions Feature Index
 │   ├── casestudy/                    # Deep-Dive Case Studies & Hands-On Engineering Labs
 │   │   ├── README.md                 # Case Studies & Hands-On Labs Sitemap
-│   │   └── http-and-cloud-storage-event-functions-lab.md # Lab: HTTP & GCS Event Functions with Revisions
+│   │   ├── http-and-cloud-storage-event-functions-lab.md # Lab 1: HTTP & GCS Event Functions with Revisions
+│   │   └── vpc-connector-redis-and-internal-vm-lab.md   # Lab 2: VPC Connector, Redis & Internal VM
 │   ├── hld-lld-design.md             # Serverless Architecture & Buildpack Containerization
 │   ├── triggers-vpc-workflows.md     # In-Depth Triggers, VPC Networking & Workflows Architecture
 │   ├── decision-tree.md              # Source Location & Deployment Tooling Decision Trees
@@ -167,7 +168,8 @@ gcd/
 
 ### Feature 9: Cloud Run Functions (`/cloud-run-functions/`)
 * **[Case Studies & Hands-On Labs Index (`cloud-run-functions/casestudy/README.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/casestudy/README.md)**
-* **[Hands-On Lab: HTTP & GCS Event Functions with Revisions (`cloud-run-functions/casestudy/http-and-cloud-storage-event-functions-lab.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/casestudy/http-and-cloud-storage-event-functions-lab.md)**
+* **[Lab 1: HTTP & GCS Event Functions with Revisions (`cloud-run-functions/casestudy/http-and-cloud-storage-event-functions-lab.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/casestudy/http-and-cloud-storage-event-functions-lab.md)**
+* **[Lab 2: VPC Connector, Memorystore Redis & Internal VM (`cloud-run-functions/casestudy/vpc-connector-redis-and-internal-vm-lab.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/casestudy/vpc-connector-redis-and-internal-vm-lab.md)**
 * **[HLD & LLD Design (`cloud-run-functions/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/hld-lld-design.md)**
 * **[Triggers, VPC Networking & Workflows Manual (`cloud-run-functions/triggers-vpc-workflows.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/triggers-vpc-workflows.md)**
 * **[ASCII & Visual Decision Trees (`cloud-run-functions/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/decision-tree.md)**
