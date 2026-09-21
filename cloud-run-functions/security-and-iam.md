@@ -383,3 +383,204 @@ gcloud functions deploy secure-vault-service \
   --vpc-connector=projects/my-prod-project/locations/us-central1/connectors/secure-vpc-conn \
   --vpc-egress=all-traffic
 ```
+
+---
+
+## 10. Data Protection at Rest with Customer-Managed Encryption Keys (CMEK)
+
+While Google Cloud encrypts all customer data at rest by default using Google-managed keys, compliance mandates (HIPAA, PCI-DSS, FedRAMP) often demand **Customer-Managed Encryption Keys (CMEK)** managed via **Google Cloud Key Management Service (KMS)**.
+
+CMEK ensures that the customer retains complete cryptographic ownership over the encryption keys. If the customer disables, revokes, or destroys the key, access to the encrypted data is revoked immediately across Google Cloud infrastructure.
+
+```mermaid
+graph TD
+    classDef kms fill:#451A03,stroke:#F97316,stroke-width:2px,color:#F8FAFC;
+    classDef agent fill:#1E1B4B,stroke:#818CF8,stroke-width:2px,color:#F8FAFC;
+    classDef data fill:#064E3B,stroke:#34D399,stroke-width:2px,color:#F8FAFC;
+    classDef fn fill:#831843,stroke:#F472B6,stroke-width:2px,color:#F8FAFC;
+
+    subgraph KMSKeyManagement ["Cloud KMS (Customer-Controlled Cryptographic Root)"]
+        KMSKey["Customer-Managed Encryption Key (CMEK)<br/>• Regional Key (Software, Cloud HSM, or Cloud EKM)<br/>• Customer controls rotation, disablement & destruction<br/>• Strictly uses Primary Key Version"]:::kms
+    end
+
+    subgraph ServiceAgentsTier ["Authorized Google-Managed Service Agents"]
+        CFSAgent["Cloud Run Functions Service Agent<br/>service-NUM@gcf-admin-robot.iam..."]:::agent
+        ARSAgent["Artifact Registry Service Agent<br/>service-NUM@gcp-sa-artifactregistry.iam..."]:::agent
+        GCSAgent["Cloud Storage Service Agent<br/>service-NUM@gs-project-accounts.iam..."]:::agent
+    end
+
+    subgraph EncryptedAssets ["Protected Cloud Run Functions Assets at Rest"]
+        SourceZip["1. Uploaded Function Source Code Archive<br/>(Stored in GCS Build Staging Bucket)"]:::data
+        BuildImages["2. Compiled Container Images & Instances<br/>(Artifact Registry OCI Image & Runtime Disks)"]:::data
+        EventBus["3. Internal Event Transport Channels<br/>(Eventarc Data at Rest)"]:::data
+    end
+
+    subgraph RuntimeBehavior ["Runtime Key Revocation / Disablement Behavior"]
+        ActiveInst["Active Running Instances: Continue execution<br/>(In-flight requests do not crash immediately)"]:::fn
+        NewInst["New Invocations & Cold Starts: FAIL<br/>(Cannot decrypt image without valid KMS key)"]:::fn
+    end
+
+    KMSKey -->|roles/cloudkms.cryptoKeyEncrypterDecrypter| CFSAgent
+    KMSKey -->|roles/cloudkms.cryptoKeyEncrypterDecrypter| ARSAgent
+    KMSKey -->|roles/cloudkms.cryptoKeyEncrypterDecrypter| GCSAgent
+
+    CFSAgent -->|Encrypts & Decrypts| SourceZip
+    ARSAgent -->|Encrypts & Decrypts| BuildImages
+    CFSAgent -->|Encrypts & Decrypts| EventBus
+
+    KMSKey -.->|If Key Disabled or Destroyed| RuntimeBehavior
+```
+
+---
+
+### 10.1 Types of Function Data Encrypted by CMEK
+
+When CMEK is enabled on a Cloud Run function, Google Cloud encrypts three core categories of data at rest:
+1. **Function Source Code Archive**: The source code uploaded for deployment, stored in the Cloud Storage build staging bucket.
+2. **Build Results & Container Images**: The compiled OCI container images stored in Artifact Registry and the disk images backing each deployed function instance.
+3. **Internal Event Transport Channels**: Data at rest for internal event delivery queues and Eventarc triggers.
+
+---
+
+### 10.2 Four-Step CMEK Implementation Workflow
+
+To deploy a Cloud Run function protected with CMEK, complete the following prerequisites in order:
+
+#### Step 1: Create a Single-Region KMS Key
+* Cloud Run functions requires a **single-region key**. Multi-region or global keys are not supported.
+* The key must reside in the **exact same region** as the Cloud Run function.
+
+#### Step 2: Provision a CMEK-Enabled Artifact Registry Repository
+* Create an Artifact Registry Docker repository with CMEK encryption enabled.
+* **Strict Rule**: You must configure the repository with the **exact same KMS key** that is used for the Cloud Run function.
+
+#### Step 3: Grant KMS Decryption Permissions to Required Service Agents
+The `roles/cloudkms.cryptoKeyEncrypterDecrypter` role must be granted to three distinct Google-managed service identities:
+1. **Cloud Run Functions Service Agent**:
+   `service-PROJECT_NUMBER@gcf-admin-robot.iam.gserviceaccount.com`
+2. **Artifact Registry Service Agent**:
+   `service-PROJECT_NUMBER@gcp-sa-artifactregistry.iam.gserviceaccount.com`
+3. **Cloud Storage Service Agent**:
+   `service-PROJECT_NUMBER@gs-project-accounts.iam.gserviceaccount.com`
+
+#### Step 4: Deploy Function Specifying Key & Repository
+Deploy the function passing the `--kms-key` and `--docker-repository` flags.
+
+---
+
+### 10.3 Key Versioning & Revocation Mechanics
+
+1. **Primary Key Version Constraint**:
+   - Cloud Run functions **always uses the primary version** of the KMS key for CMEK protection.
+   - You **cannot specify a specific key version** (e.g. `/cryptoKeyVersions/2`) during deployment.
+2. **Impact of Disabling or Destroying a CMEK Key**:
+   - **Active Instances**: Instances of functions already booted and running are **not shut down immediately**. Executions currently in progress will complete.
+   - **New Executions**: Any invocation requiring a new instance (cold start, traffic autoscaling spike) will **fail immediately** with an internal decryption error.
+   - **Re-enablement**: Re-enabling the key in Cloud KMS restores normal scaling and execution without redeploying the function.
+
+---
+
+### 10.4 Cloud Storage CMEK & Eventarc Integration Pattern
+
+A common enterprise pattern involves storing sensitive files in Cloud Storage buckets encrypted with CMEK and triggering Cloud Run functions via Eventarc:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as Client Application
+    participant GCS as Cloud Storage Bucket (CMEK Protected)
+    participant KMS as Cloud KMS (CryptoKey)
+    participant EA as Eventarc Trigger
+    participant Fn as Cloud Run Function (2nd Gen)
+
+    Client->>GCS: Upload sensitive data (e.g. medical_records.csv)
+    GCS->>KMS: Request encryption using CMEK
+    KMS-->>GCS: Encrypted ciphertext committed to storage
+    
+    GCS->>EA: Emit google.cloud.storage.object.v1.finalized
+    EA->>Fn: Deliver CloudEvent HTTP POST
+    
+    activate Fn
+    Fn->>GCS: Download medical_records.csv
+    GCS->>KMS: Decrypt object using CMEK
+    KMS-->>GCS: Decrypted plaintext
+    GCS-->>Fn: Stream file data to function
+    Fn->>Fn: Process sensitive records
+    deactivate Fn
+```
+
+---
+
+### 10.5 Production CLI Runbook for CMEK Configuration
+
+```bash
+export PROJECT_ID=$(gcloud config get-value project)
+export PROJECT_NUMBER=$(gcloud projects describe ${PROJECT_ID} --format="value(projectNumber)")
+export REGION="us-central1"
+export KEYRING_NAME="fn-keyring-${REGION}"
+export KEY_NAME="fn-cmek-key"
+
+# ── STEP 1: CREATE KMS KEY RING & REGIONAL CRYPTOKEY ───────────────────────
+
+# Create regional key ring
+gcloud kms keyrings create ${KEYRING_NAME} \
+  --location=${REGION}
+
+# Create symmetric encryption key in key ring
+gcloud kms keys create ${KEY_NAME} \
+  --location=${REGION} \
+  --keyring=${KEYRING_NAME} \
+  --purpose=encryption \
+  --protection-level=software
+
+export KMS_KEY_ID="projects/${PROJECT_ID}/locations/${REGION}/keyRings/${KEYRING_NAME}/cryptoKeys/${KEY_NAME}"
+
+# ── STEP 2: CREATE CMEK-ENABLED ARTIFACT REGISTRY REPOSITORY ───────────────
+
+gcloud artifacts repositories create gcf-cmek-repo \
+  --repository-format=docker \
+  --location=${REGION} \
+  --kms-key=${KMS_KEY_ID} \
+  --description="CMEK Encrypted Docker Repository for Cloud Run Functions"
+
+export DOCKER_REPO="projects/${PROJECT_ID}/locations/${REGION}/repositories/gcf-cmek-repo"
+
+# ── STEP 3: GRANT KMS ROLES TO SERVICE AGENTS ──────────────────────────────
+
+# 1. Cloud Run Functions Service Agent
+export GCF_SA="service-${PROJECT_NUMBER}@gcf-admin-robot.iam.gserviceaccount.com"
+gcloud kms keys add-iam-policy-binding ${KEY_NAME} \
+  --location=${REGION} \
+  --keyring=${KEYRING_NAME} \
+  --member="serviceAccount:${GCF_SA}" \
+  --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+# 2. Artifact Registry Service Agent
+export AR_SA="service-${PROJECT_NUMBER}@gcp-sa-artifactregistry.iam.gserviceaccount.com"
+gcloud kms keys add-iam-policy-binding ${KEY_NAME} \
+  --location=${REGION} \
+  --keyring=${KEYRING_NAME} \
+  --member="serviceAccount:${AR_SA}" \
+  --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+# 3. Cloud Storage Service Agent
+export GCS_SA="service-${PROJECT_NUMBER}@gs-project-accounts.iam.gserviceaccount.com"
+gcloud kms keys add-iam-policy-binding ${KEY_NAME} \
+  --location=${REGION} \
+  --keyring=${KEYRING_NAME} \
+  --member="serviceAccount:${GCS_SA}" \
+  --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+# ── STEP 4: DEPLOY FUNCTION WITH CMEK PROTECTION ───────────────────────────
+
+gcloud functions deploy secure-cmek-service \
+  --gen2 \
+  --region=${REGION} \
+  --runtime=nodejs20 \
+  --entry-point=processData \
+  --source=. \
+  --trigger-http \
+  --no-allow-unauthenticated \
+  --kms-key=${KMS_KEY_ID} \
+  --docker-repository=${DOCKER_REPO}
+```

@@ -107,8 +107,15 @@ gcloud functions deploy order-processing-service \
   # ── ENVIRONMENT VARIABLES & SECRET MANAGER INTEGRATION ───────────────────
   --set-env-vars=ENVIRONMENT=production,LOG_LEVEL=info \
   # Key-value pairs: Runtime environment variables exposed to container.
-  --set-secrets=DATABASE_PASSWORD=projects/123456789/secrets/db-pass:latest
+  --set-secrets=DATABASE_PASSWORD=projects/123456789/secrets/db-pass:latest \
   # Secret Manager mapping: Injects secret as environment variable or mounted file.
+
+  # ── CUSTOMER-MANAGED ENCRYPTION KEYS (CMEK) ──────────────────────────────
+  --kms-key=projects/my-prod-project/locations/us-central1/keyRings/fn-ring/cryptoKeys/fn-cmek-key \
+  # Resource URI: Cloud KMS key for encrypting source archive, container image, and runtime disks.
+  # Constraint: Must be a single-region key in the same region as the function. Always uses primary version.
+  --docker-repository=projects/my-prod-project/locations/us-central1/repositories/gcf-cmek-repo
+  # Resource URI: Artifact Registry Docker repository configured with the same CMEK key.
 ```
 
 ---
@@ -335,5 +342,7 @@ npm test
 | `AccessDenied: Cloud Run functions service agent does not have permission to read from bucket` | The service agent `service-PROJECT_NUMBER@gcf-admin-robot.iam.gserviceaccount.com` lacks read permissions on the staging bucket. | Run `gcloud storage buckets add-iam-policy-binding gs://BUCKET --member="serviceAccount:service-NUM@gcf-admin-robot..." --role="roles/storage.objectViewer"`. |
 | `AccessDenied: Cloud Run functions service agent does not have permission to read repository` | The service agent lacks `roles/source.reader` on the Google Cloud Source Repository. | Run `gcloud projects add-iam-policy-binding PROJECT_ID --member="serviceAccount:service-NUM@gcf-admin-robot..." --role="roles/source.reader"`. |
 | `Deployment times out during source upload (> 50 MB - 500 MB uploaded)` | Missing `.gcloudignore` causing `node_modules/`, `.git/`, or large test media to be compressed and uploaded over WAN. | Create a `.gcloudignore` file in the root source directory containing `node_modules/`, `.git/`, `.venv/`. |
-| `HTTP 403 Forbidden` on invocation | Function was deployed with `--no-allow-unauthenticated` or omitted `--allow-unauthenticated`. | To allow public traffic, run `gcloud functions add-iam-policy-binding <NAME> --region=<REGION> --member="allUsers" --role="roles/run.invoker"`. |
 | `Build failed: buildpack could not determine runtime` | Missing dependency descriptor file (`package.json` for Node, `requirements.txt` for Python, `go.mod` for Go). | Ensure the required manifest file exists at the root of the source directory. |
+| `Permission denied on KMS key / CryptoKey Encrypter/Decrypter` | Google-managed service agent (Cloud Run functions, Artifact Registry, or Cloud Storage) lacks `roles/cloudkms.cryptoKeyEncrypterDecrypter` on the CMEK key. | Grant `roles/cloudkms.cryptoKeyEncrypterDecrypter` on the key to `service-NUM@gcf-admin-robot.iam...`, `service-NUM@gcp-sa-artifactregistry...`, and `service-NUM@gs-project-accounts...`. |
+| `Internal error during container cold start: Key disabled or destroyed` | The CMEK key protecting the function was disabled or destroyed in Cloud KMS. Active instances remain up, but all new cold starts fail. | Re-enable the CryptoKey version in Cloud KMS via `gcloud kms keys versions enable`. |
+| `KMS key location mismatch error` | The Cloud KMS key was created in a different region than the function or Artifact Registry repository. | Create a single-region key residing in the **exact same region** as the Cloud Run function. |

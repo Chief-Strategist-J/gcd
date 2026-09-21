@@ -140,9 +140,40 @@ This document provides structured decision logic trees for selecting source code
 
 ---
 
-## 6. Visual Mermaid Decision Flowcharts
+## 6. Encryption & Key Management Strategy (ASCII Decision Tree)
 
-### 6.1 Source Code Location Strategy Flowchart:
+```
+================================================================================
+          CLOUD RUN FUNCTIONS DATA ENCRYPTION & KEY SELECTION
+================================================================================
+
+              What are your data compliance & key ownership requirements?
+                                       │
+        ┌──────────────────────────────┴──────────────────────────────┐
+        ▼                                                             ▼
+  [ Standard Enterprise ]                                      [ Strict Regulatory Compliance ]
+  Standard web applications, microservices,                    HIPAA, PCI-DSS, FedRAMP, Banking,
+  internal event processing                                    Defense, sovereign encryption
+        │                                                             │
+        ▼                                                             ▼
+  GOOGLE-MANAGED ENCRYPTION KEYS                               CUSTOMER-MANAGED ENCRYPTION KEYS
+  (DEFAULT)                                                    (CMEK via Cloud KMS)
+  - Zero key management overhead                               - Complete cryptographic control
+  - AES-256 encryption at rest                                 - Kill-switch capability (immediate data revocation)
+  - Managed rotation by Google                                 - Protects source archive, container images & event bus
+                                                                      │
+                                                                      ├──────────────────────────────┐
+                                                                      ▼                              ▼
+                                                                Cloud KMS Software Key        Cloud HSM / EKM
+                                                                FIPS 140-2 Level 1            FIPS 140-2 Level 3 /
+                                                                Low cost, cloud native        External Key Manager
+```
+
+---
+
+## 7. Visual Mermaid Decision Flowcharts
+
+### 7.1 Source Code Location Strategy Flowchart:
 
 ```mermaid
 graph TD
@@ -159,7 +190,7 @@ graph TD
 
 ---
 
-### 6.2 Deployment Tooling Selection Flowchart:
+### 7.2 Deployment Tooling Selection Flowchart:
 
 ```mermaid
 graph TD
@@ -176,7 +207,7 @@ graph TD
 
 ---
 
-### 6.3 IAM Role Assignment Flowchart:
+### 7.3 IAM Role Assignment Flowchart:
 
 ```mermaid
 graph TD
@@ -193,7 +224,7 @@ graph TD
 
 ---
 
-### 6.4 VPC Ingress & Egress Routing Flowchart:
+### 7.4 VPC Ingress & Egress Routing Flowchart:
 
 ```mermaid
 graph TD
@@ -211,7 +242,7 @@ graph TD
 
 ---
 
-### 6.5 Orchestration vs. Event Choreography Flowchart:
+### 7.5 Orchestration vs. Event Choreography Flowchart:
 
 ```mermaid
 graph TD
@@ -220,4 +251,16 @@ graph TD
     Pattern -->|Event-driven, independent, fire-and-forget| EventarcCoord["Use Eventarc (Choreography)<br/>• Decoupled microservices<br/>• 1:N fan-out on single storage/pubsub event<br/>• Reactive, low-latency execution"]
 
     Pattern -->|Multi-step workflow, retries, branching logic| WorkflowCoord["Use Cloud Workflows (Orchestration)<br/>• Centralized state machine<br/>• Zero idle compute cost while waiting<br/>• Built-in exponential retries & error handling<br/>• Secure OIDC auth to private functions"]
+```
+
+---
+
+### 7.6 Customer-Managed Encryption Keys (CMEK) Architecture Flowchart:
+
+```mermaid
+graph TD
+    StartCMEK["Configure CMEK Protection"] --> Step1["1. Create Single-Region Cloud KMS Key<br/>(Must match function region)"]
+    Step1 --> Step2["2. Create CMEK-Enabled Artifact Registry Repo<br/>(Must use the exact same KMS key)"]
+    Step2 --> Step3["3. Grant roles/cloudkms.cryptoKeyEncrypterDecrypter to:<br/>• Cloud Run Functions Service Agent<br/>• Artifact Registry Service Agent<br/>• Cloud Storage Service Agent"]
+    Step3 --> Step4["4. Deploy Function with Flags:<br/>--kms-key=projects/.../cryptoKeys/...<br/>--docker-repository=projects/.../repositories/..."]
 ```
