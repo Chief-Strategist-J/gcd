@@ -86,6 +86,13 @@ gcd/
 │   ├── shell-commands.md             # In-Depth CLI Manual & Error Matrix (`gcloud functions`)
 │   └── references.md                 # Official Cloud Run Functions Documentation Links
 │
+├── pubsub/                           # Feature 10: Google Cloud Pub/Sub (Enterprise Messaging)
+│   ├── README.md                     # Pub/Sub Feature Index
+│   ├── hld-lld-design.md             # Distributed Architecture & Ack State Machine
+│   ├── decision-tree.md              # Subscription Type & Delivery Guarantees Decision Trees
+│   ├── shell-commands.md             # In-Depth CLI Manual & Error Matrix (`gcloud pubsub`)
+│   └── references.md                 # Official Pub/Sub Documentation Links & Best Practices
+│
 └── README.md                         # Master Workspace Index (This File)
 ```
 
@@ -175,6 +182,14 @@ gcd/
 * **[ASCII & Visual Decision Trees (`cloud-run-functions/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/decision-tree.md)**
 * **[Shell Command Reference & Failure Resolutions (`cloud-run-functions/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/shell-commands.md)**
 * **[Official References & Links (`cloud-run-functions/references.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/references.md)**
+
+---
+
+### Feature 10: Google Cloud Pub/Sub (`/pubsub/`)
+* **[HLD & LLD Design (`pubsub/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/pubsub/hld-lld-design.md)**
+* **[ASCII & Visual Decision Trees (`pubsub/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/pubsub/decision-tree.md)**
+* **[Shell Command Reference & Failure Resolutions (`pubsub/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/pubsub/shell-commands.md)**
+* **[Official References & Links (`pubsub/references.md`)](file:///home/btpl-lap-22/live/gcd/pubsub/references.md)**
 
 
 
