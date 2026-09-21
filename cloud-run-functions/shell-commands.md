@@ -287,6 +287,40 @@ gcloud functions describe order-processing-service \
   --gen2 \
   --region=us-central1 \
   --format="yaml(state,serviceConfig.uri,buildConfig.build)"
+
+# ── REVISION MANAGEMENT & TRAFFIC SPLITTING ─────────────────────────────────
+
+# List all revisions of the underlying Cloud Run service
+gcloud run revisions list \
+  --service=order-processing-service \
+  --region=us-central1 \
+  --format="table(name,active,traffic_percent)"
+
+# Split traffic across two revisions (e.g. 50% Canary / A-B testing)
+gcloud run services update-traffic order-processing-service \
+  --region=us-central1 \
+  --to-revisions=order-processing-service-00001-abc=50,order-processing-service-00002-xyz=50
+
+# Roll back 100% of traffic to a previous stable revision
+gcloud run services update-traffic order-processing-service \
+  --region=us-central1 \
+  --to-revisions=order-processing-service-00001-abc=100
+
+# Route 100% of traffic to the latest deployed revision
+gcloud run services update-traffic order-processing-service \
+  --region=us-central1 \
+  --to-latest
+
+# ── LOCAL TESTING WITH FUNCTIONS FRAMEWORK ─────────────────────────────────
+
+# Run function locally on port 8080 with Functions Framework
+npx @google-cloud/functions-framework --target=processOrder --port=8080
+
+# Invoke locally running HTTP function
+curl "http://localhost:8080/?temp=70"
+
+# Execute pre-deployment unit test suite via Mocha
+npm test
 ```
 
 ---
