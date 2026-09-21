@@ -82,6 +82,7 @@ gcd/
 │   │   └── vpc-connector-redis-and-internal-vm-lab.md   # Lab 2: VPC Connector, Redis & Internal VM
 │   ├── hld-lld-design.md             # Serverless Architecture & Buildpack Containerization
 │   ├── triggers-vpc-workflows.md     # In-Depth Triggers, VPC Networking & Workflows Architecture
+│   ├── security-and-iam.md           # Zero-Trust Security, OIDC Auth, IAM & VPC-SC Perimeters
 │   ├── decision-tree.md              # Source Location & Deployment Tooling Decision Trees
 │   ├── shell-commands.md             # In-Depth CLI Manual & Error Matrix (`gcloud functions`)
 │   └── references.md                 # Official Cloud Run Functions Documentation Links
@@ -179,6 +180,7 @@ gcd/
 * **[Lab 2: VPC Connector, Memorystore Redis & Internal VM (`cloud-run-functions/casestudy/vpc-connector-redis-and-internal-vm-lab.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/casestudy/vpc-connector-redis-and-internal-vm-lab.md)**
 * **[HLD & LLD Design (`cloud-run-functions/hld-lld-design.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/hld-lld-design.md)**
 * **[Triggers, VPC Networking & Workflows Manual (`cloud-run-functions/triggers-vpc-workflows.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/triggers-vpc-workflows.md)**
+* **[Security, IAM & Zero-Trust Manual (`cloud-run-functions/security-and-iam.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/security-and-iam.md)**
 * **[ASCII & Visual Decision Trees (`cloud-run-functions/decision-tree.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/decision-tree.md)**
 * **[Shell Command Reference & Failure Resolutions (`cloud-run-functions/shell-commands.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/shell-commands.md)**
 * **[Official References & Links (`cloud-run-functions/references.md`)](file:///home/btpl-lap-22/live/gcd/cloud-run-functions/references.md)**
