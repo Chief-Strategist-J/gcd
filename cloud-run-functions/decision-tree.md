@@ -171,9 +171,38 @@ This document provides structured decision logic trees for selecting source code
 
 ---
 
-## 7. Visual Mermaid Decision Flowcharts
+## 7. Database Integration & Secret Ingestion Strategy (ASCII Decision Tree)
 
-### 7.1 Source Code Location Strategy Flowchart:
+```
+================================================================================
+       CLOUD RUN FUNCTIONS DATABASE & SECRET INGESTION STRATEGY
+================================================================================
+
+              What backend data or credential service are you integrating?
+                                        │
+        ┌───────────────────────────────┼───────────────────────────────┐
+        ▼                               ▼                               ▼
+  [ In-Memory Cache ]          [ Document Database ]           [ Sensitive Secrets / Keys ]
+  Memorystore Redis/Memcached   Cloud Firestore                 Database Passwords, API Keys
+        │                               │                               │
+        ▼                               ▼                               ▼
+  SERVERLESS VPC ACCESS         NATIVE MODE TRIGGER            SECRET MANAGER INJECTION
+  `--vpc-connector=...`         `--trigger-event-filters=...`  `--set-secrets=...`
+        │                               │                               │
+        ├────────────────┐              ├────────────────┐              ├────────────────┐
+        ▼                ▼              ▼                ▼              ▼                ▼
+  Connector State   Egress Mode    Event Types      Path Syntax    Volume Mount     Env Variable
+  Must be in        --vpc-egress=  created, updated Wildcards:     --set-secrets=   --set-secrets=
+  READY state       private-ranges deleted, written users/{userId} /path=sec:latest KEY=sec:1
+  before deploy     -only          Strict Native    No trailing    Dynamic rotation Pinned boot
+                    (saves egress) mode only        slashes        on file read     version
+```
+
+---
+
+## 8. Visual Mermaid Decision Flowcharts
+
+### 8.1 Source Code Location Strategy Flowchart:
 
 ```mermaid
 graph TD
@@ -190,7 +219,7 @@ graph TD
 
 ---
 
-### 7.2 Deployment Tooling Selection Flowchart:
+### 8.2 Deployment Tooling Selection Flowchart:
 
 ```mermaid
 graph TD
@@ -207,7 +236,7 @@ graph TD
 
 ---
 
-### 7.3 IAM Role Assignment Flowchart:
+### 8.3 IAM Role Assignment Flowchart:
 
 ```mermaid
 graph TD
@@ -224,7 +253,7 @@ graph TD
 
 ---
 
-### 7.4 VPC Ingress & Egress Routing Flowchart:
+### 8.4 VPC Ingress & Egress Routing Flowchart:
 
 ```mermaid
 graph TD
@@ -242,7 +271,7 @@ graph TD
 
 ---
 
-### 7.5 Orchestration vs. Event Choreography Flowchart:
+### 8.5 Orchestration vs. Event Choreography Flowchart:
 
 ```mermaid
 graph TD
@@ -255,7 +284,7 @@ graph TD
 
 ---
 
-### 7.6 Customer-Managed Encryption Keys (CMEK) Architecture Flowchart:
+### 8.6 Customer-Managed Encryption Keys (CMEK) Architecture Flowchart:
 
 ```mermaid
 graph TD
@@ -263,4 +292,21 @@ graph TD
     Step1 --> Step2["2. Create CMEK-Enabled Artifact Registry Repo<br/>(Must use the exact same KMS key)"]
     Step2 --> Step3["3. Grant roles/cloudkms.cryptoKeyEncrypterDecrypter to:<br/>• Cloud Run Functions Service Agent<br/>• Artifact Registry Service Agent<br/>• Cloud Storage Service Agent"]
     Step3 --> Step4["4. Deploy Function with Flags:<br/>--kms-key=projects/.../cryptoKeys/...<br/>--docker-repository=projects/.../repositories/..."]
+```
+
+---
+
+### 8.7 Database & Secret Ingestion Strategy Flowchart:
+
+```mermaid
+graph TD
+    StartData["Configure Database & Credentials"] --> TargetType{"Target Resource Type?"}
+
+    TargetType -->|In-Memory Caching: Redis / Memcached| MemFlow["1. Discover Redis VPC, Host & Port<br/>2. Create Serverless VPC Access Connector (/28)<br/>3. Verify connector state is READY<br/>4. Deploy with --vpc-connector & --vpc-egress=private-ranges-only<br/>5. Inject REDIS_HOST & REDIS_PORT via --set-env-vars"]
+
+    TargetType -->|Document DB: Cloud Firestore| FSFlow["1. Ensure Firestore is in NATIVE MODE (not Datastore)<br/>2. Specify Document Path without trailing slash<br/>3. Grant roles/datastore.user & roles/eventarc.eventReceiver to Runtime SA<br/>4. Deploy with --trigger-event-filters=type=google.cloud.firestore.document.v1.written"]
+
+    TargetType -->|Sensitive Secrets: API Keys & DB Passwords| SecFlow{"Credential Ingestion Method?"}
+    SecFlow -->|Dynamic Rotation Required (File Mount)| SecMount["Mount as Volume File:<br/>--set-secrets=/mount/path=SECRET:latest<br/>• Dynamic latest version on each file read<br/>• Runtime SA requires roles/secretmanager.secretAccessor"]
+    SecFlow -->|Pinned Version Cached at Boot| SecEnv["Inject as Environment Variable:<br/>--set-secrets=ENV_VAR=SECRET:1<br/>• Fixed version evaluated at cold start<br/>• Runtime SA requires roles/secretmanager.secretAccessor"]
 ```

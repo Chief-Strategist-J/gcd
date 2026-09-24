@@ -120,20 +120,69 @@ When architecting serverless event-driven systems on Google Cloud, two fundament
 
 ---
 
-### 3.4 Cloud Firestore Triggers
-* **Scope & Restrictions**:
-  - **Document-Level Only**: Firestore triggers execute **strictly at the document level**. You cannot trigger on individual field mutations within a document, nor can you listen to an entire collection without specifying a document path.
-  - **Same Project Constraint**: The Firestore database **must reside in the same Google Cloud project** as the Cloud Run function.
-* **Supported Event Types**:
-  1. `google.cloud.firestore.document.v1.created`
-  2. `google.cloud.firestore.document.v1.updated`
-  3. `google.cloud.firestore.document.v1.deleted`
-  4. `google.cloud.firestore.document.v1.written` (Fires on create, update, OR delete)
-* **Document Path Wildcard Syntax**:
-  - Target specific documents: `users/admin-user`
-  - Target wildcard document IDs: `users/{userId}` or nested subcollections: `users/{userId}/orders/{orderId}`.
-* **Data Snapshot Payload**:
-  - Delivers `cloudEvent.data.value` (current document state) and `cloudEvent.data.oldValue` (state prior to mutation).
+### 3.4 Cloud Firestore Triggers (Native Mode)
+
+Cloud Run functions can react in real time to mutations in Google Cloud Firestore collections. This enables asynchronous document post-processing, validation, event auditing, and cross-collection data syncing without provisioning dedicated listener servers.
+
+#### Core Architectural Constraints & Rules
+
+1. **Strict Firestore Mode Compatibility**:
+   - **Supported**: Firestore in **Native mode** exclusively.
+   - **Unsupported**: Firestore in **Datastore mode** does **not** support Cloud Run function triggers or Eventarc subscriptions.
+2. **Document-Level Granularity**:
+   - Triggers fire strictly at the **document level**. You cannot filter on mutations of individual fields within a document, nor can you listen to an entire collection without specifying a document path or wildcard pattern.
+3. **Document Path Wildcard Syntax & Rules**:
+   - Must specify document paths relative to the database root (e.g., `users/{userId}` or `customers/{customerId}/orders/{orderId}`).
+   - **Crucial Rule**: Document paths **must never contain a trailing slash** (`users/{userId}/` is invalid and causes deployment failure).
+4. **Project Colocation**:
+   - The Firestore database and the Cloud Run function must reside in the **same Google Cloud project**.
+
+#### Supported Firestore Event Types
+
+| Event Type String | Invocation Timing | CloudEvent Snapshot Payloads |
+| :--- | :--- | :--- |
+| `google.cloud.firestore.document.v1.created` | New document inserted | `cloudEvent.data.value` (Newly created document state) |
+| `google.cloud.firestore.document.v1.updated` | Existing document modified | Both `cloudEvent.data.value` (After) AND `cloudEvent.data.oldValue` (Before) |
+| `google.cloud.firestore.document.v1.deleted` | Document purged | `cloudEvent.data.oldValue` (State immediately before deletion) |
+| `google.cloud.firestore.document.v1.written` | Created, updated, OR deleted | Dynamic: `value` (Create), both (Update), or `oldValue` (Delete) |
+
+#### Event Snapshot Mechanics & Document Modification Patterns
+
+* **Accessing the Triggering Document (`DocumentReference`)**:
+  - Each function invocation is associated with a specific document in the database.
+  - In the Firebase/Firestore SDK, the event snapshot exposes the document reference via the `ref` property.
+  - This `DocumentReference` contains methods (`set()`, `update()`, `delete()`) enabling direct modification of the triggering document without having to manually reconstruct its path.
+* **Accessing External Documents (Firebase Admin SDK)**:
+  - When the function must read or write data in collections **other than the triggering document** (e.g., writing an audit trail or incrementing a global counter), instantiate and use the **Firebase Admin SDK** (`firebase-admin/firestore`).
+
+```javascript
+// Example Node.js handler illustrating DocumentReference vs Firebase Admin SDK
+const functions = require('@google-cloud/functions-framework');
+const admin = require('firebase-admin');
+
+admin.initializeApp();
+const db = admin.firestore();
+
+functions.cloudEvent('processFirestoreEvent', async (cloudEvent) => {
+  const { value, oldValue } = cloudEvent.data;
+  
+  // 1. Identify triggering document from event subject
+  const docPath = (cloudEvent.document || cloudEvent.subject).split('/documents/')[1];
+  const triggeringDocRef = db.doc(docPath);
+
+  // 2. Modify triggering document via its reference
+  await triggeringDocRef.set({ lastAuditedAt: new Date().toISOString() }, { merge: true });
+
+  // 3. Read/write to separate collections using Firebase Admin SDK
+  await db.collection('audit_events').add({
+    action: 'DOCUMENT_MUTATION',
+    path: docPath,
+    before: oldValue ? oldValue.fields : null,
+    after: value ? value.fields : null,
+    timestamp: admin.firestore.FieldValue.serverTimestamp()
+  });
+});
+```
 
 ---
 
@@ -236,6 +285,45 @@ A **Serverless VPC Access Connector** is a managed regional resource composed of
    - Ingress and egress firewall rules within your VPC network can specifically target the connector's `/28` IP range or network tags to tightly restrict which backend internal databases or VMs the serverless functions can reach.
 5. **Shared VPC Enterprise Topology**:
    - When deploying in enterprise organizations using Shared VPC, the Serverless VPC Access connector can be hosted in either the Shared VPC Host Project or the Service Project. The Serverless VPC Access Service Agent (`service-SERVICE_PROJECT_NUM@gcp-sa-vpcaccess.iam.gserviceaccount.com`) must be granted the `roles/compute.networkUser` role in the Host Project.
+
+### 4.4 In-Memory Cache Integration: Google Cloud Memorystore (Redis & Memcached)
+
+Google Cloud **Memorystore** provides fully managed, scalable, and secure in-memory caching for Redis and Memcached. Memorystore automates provisioning, replication, failover, and maintenance patching, while providing native integration with Cloud IAM and Cloud Monitoring.
+
+Because Memorystore instances are deployed without public endpoints and bind strictly to private RFC 1918 VPC addresses, Cloud Run functions must establish connectivity via a **Serverless VPC Access Connector**.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as External Client / Webhook
+    participant Function as Cloud Run Function Runtime
+    participant VPCConnector as Serverless VPC Access Connector (/28)
+    participant Memorystore as Memorystore Redis Instance (10.0.0.15:6379)
+
+    Client->>Function: HTTP GET /get-cache-metric
+    Note over Function: Read REDIS_HOST & REDIS_PORT from Env Vars
+    Note over Function: Reuse pooled redis client from warm container
+    Function->>VPCConnector: Forward private TCP request (port 6379)
+    VPCConnector->>Memorystore: Route across internal Andromeda SDN
+    Memorystore-->>VPCConnector: Return Redis response / INCR counter
+    VPCConnector-->>Function: Deliver data back over connector tunnel
+    Function-->>Client: HTTP 200 OK {"cached_views": 42}
+```
+
+#### End-to-End Implementation Flow:
+
+1. **Discover Memorystore Network Parameters**:
+   Inspect the target Redis instance to identify its authorized VPC network (e.g. `default` or `my-custom-vpc`), internal IP address (e.g. `10.0.0.15`), and service port (`6379`).
+2. **Provision Regional Serverless VPC Access Connector**:
+   Create a connector in the **same region** as the Cloud Run function, attaching it to the authorized network and assigning an unallocated `/28` CIDR range.
+3. **Verify Connector State**:
+   Confirm the connector is in `READY` status. Deploying workloads while the connector is in `CREATING` or `FAILED` causes immediate deployment aborts.
+4. **Deploy Function with Connector & Environment Variables**:
+   Specify `--vpc-connector=<CONNECTOR_NAME>`, set `--vpc-egress=private-ranges-only` (to ensure external internet traffic does not saturate the connector), and inject `REDIS_HOST` and `REDIS_PORT` as environment variables.
+5. **Instantiate Client Outside the Handler**:
+   Instantiate the Redis/Memcached client in the global scope outside the function handler. This ensures TCP connections are reused across warm container invocations, avoiding connection flooding on the Redis engine.
+6. **Trigger Invocation**:
+   Send HTTP GET requests to the function's URL to invoke cache operations.
 
 ---
 

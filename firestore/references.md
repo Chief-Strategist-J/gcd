@@ -14,6 +14,8 @@ This document contains curated official documentation links, technical reference
   Official architectural comparison guide detailing feature differences between Native Mode and Datastore Mode.
 * **[Firestore Locations & Multi-Region Support](https://cloud.google.com/firestore/docs/locations)**
   Complete list of available regional and multi-region locations, availability SLAs, and pricing boundaries.
+* **[Firestore Triggers for Cloud Run Functions](https://cloud.google.com/functions/docs/calling/cloud-firestore)**
+  Detailed guide on triggering Cloud Run functions (2nd gen) from Firestore Native Mode document mutation events via Eventarc.
 
 ---
 
@@ -49,3 +51,5 @@ This document contains curated official documentation links, technical reference
    Keep transactions small and fast to minimize lock contention and avoid `ABORTED` errors under high concurrent traffic.
 4. **Use Collection Group Queries for Deep Schemas**:
    When querying subcollections across parent documents, register Collection Group indexes rather than duplicating data into root collections.
+5. **Strict Native Mode Requirement for Cloud Functions Triggers**:
+   Firestore event triggers via Eventarc strictly require **Firestore in Native mode**; Datastore mode does not emit document mutation events. Ensure trigger document paths omit trailing slashes.

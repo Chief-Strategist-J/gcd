@@ -262,7 +262,67 @@ curl -X GET \
 
 ---
 
-## 7. Troubleshooting & Failure Resolution Matrix
+## 7. Cloud Run Functions & Eventarc Trigger Integration (Native Mode)
+
+Cloud Run functions can execute asynchronously in response to document lifecycle changes in Firestore.
+
+> [!IMPORTANT]
+> **Native Mode Requirement**: Firestore triggers are supported **strictly on Firestore in Native mode**. Triggers are **not supported in Datastore mode**. All document paths must omit trailing slashes.
+
+### 7.1 Deploy Cloud Run Function Triggered by Firestore Document Mutations
+
+```bash
+# Deploy function reacting to any document write (create, update, delete)
+gcloud functions deploy handle-firestore-order \
+  # ── RUNTIME & ENTRY POINT ────────────────────────────────────────────────
+  --gen2 \
+  --region=us-central1 \
+  --runtime=nodejs20 \
+  --entry-point=processOrderMutation \
+  --source=. \
+  
+  # ── EVENTARC TRIGGER CONFIGURATION ───────────────────────────────────────
+  --trigger-location=nam5 \
+  # Location string: Multi-region (nam5, eur3) or region (us-central1) of the Firestore database.
+  --trigger-event-filters="type=google.cloud.firestore.document.v1.written" \
+  # Eventarc filter: Specific Firestore event type:
+  #   - google.cloud.firestore.document.v1.created (Insert)
+  #   - google.cloud.firestore.document.v1.updated (Mutate)
+  #   - google.cloud.firestore.document.v1.deleted (Delete)
+  #   - google.cloud.firestore.document.v1.written (Any write)
+  --trigger-event-filters-path-pattern="document=orders/{orderId}" \
+  # Document path: Wildcard pattern matching target documents. DO NOT include trailing slash.
+  
+  # ── RUNTIME IDENTITY ─────────────────────────────────────────────────────
+  --service-account=firestore-listener-sa@${PROJECT_ID}.iam.gserviceaccount.com
+```
+
+### 7.2 Configure IAM Permissions for Function Service Account
+
+```bash
+export RUNTIME_SA="firestore-listener-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+
+# 1. Allow function to read and modify documents in Firestore
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+  --member="serviceAccount:${RUNTIME_SA}" \
+  --role="roles/datastore.user"
+
+# 2. Allow function to receive events from Eventarc
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+  --member="serviceAccount:${RUNTIME_SA}" \
+  --role="roles/eventarc.eventReceiver"
+```
+
+### 7.3 List Active Eventarc Triggers Bound to Firestore
+
+```bash
+# List all triggers registered in target location
+gcloud eventarc triggers list --location=nam5
+```
+
+---
+
+## 8. Troubleshooting & Failure Resolution Matrix
 
 | Error Code / Message | Root Cause | Resolution Procedure |
 | :--- | :--- | :--- |
@@ -273,3 +333,6 @@ curl -X GET \
 | `INVALID_ARGUMENT: Delete protection enabled` | Attempting to execute database deletion while `--delete-protection` flag is active. | Run `gcloud firestore databases update --database=${DATABASE_NAME} --no-delete-protection` prior to invoking delete. |
 | `NOT_FOUND: Database (default) does not exist` | Query targeting default database before initial database creation. | Run `gcloud firestore databases create --location=${LOCATION_ID} --type=firestore-native` to initialize the database. |
 | `ALREADY_EXISTS: Database mode cannot be changed` | Attempting to create or convert an existing database to a different operating mode. | Firestore mode selection (Native vs Datastore) is fixed upon database creation. Create a new database instance or project to use a different mode. |
+| `INVALID_ARGUMENT: Trailing slash detected in document path` | The `--trigger-event-filters-path-pattern="document=..."` parameter was specified with a trailing slash. | Remove trailing slash: use `document=orders/{orderId}` rather than `document=orders/{orderId}/`. |
+| `FAILED_PRECONDITION: Triggers not supported in Datastore mode` | Function trigger was targeted at a database operating in Datastore mode. | Firestore event triggers strictly require **Firestore in Native mode**. |
+
