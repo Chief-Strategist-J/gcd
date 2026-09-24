@@ -21,6 +21,12 @@ This document provides curated links to official Google Cloud documentation, CLI
 | **Firestore Triggers (Native Mode)** | [cloud.google.com/functions/docs/calling/cloud-firestore](https://cloud.google.com/functions/docs/calling/cloud-firestore) | Handling document create, update, delete, and write events via Eventarc CloudEvents. |
 | **Using Secrets from Secret Manager** | [cloud.google.com/functions/docs/configuring/secrets](https://cloud.google.com/functions/docs/configuring/secrets) | Mounting secrets as volume files or environment variables with automatic rotation and cross-project access. |
 | **Serverless VPC Access Guide** | [cloud.google.com/vpc/docs/configure-serverless-vpc-access](https://cloud.google.com/vpc/docs/configure-serverless-vpc-access) | Dedicated `/28` CIDR allocation, region constraints, and lifecycle management for VPC connectors. |
+| **BigQuery Remote Functions Overview** | [cloud.google.com/bigquery/docs/remote-functions](https://cloud.google.com/bigquery/docs/remote-functions) | Direct integration between BigQuery Google Standard SQL and Cloud Run functions via `CLOUD_RESOURCE` connections. |
+| **BigQuery Remote Functions Tutorial** | [cloud.google.com/bigquery/docs/remote-functions-tutorial](https://cloud.google.com/bigquery/docs/remote-functions-tutorial) | Step-by-step tutorial implementing remote functions with Cloud Run functions. |
+| **BigQuery Cloud Resource Connections** | [cloud.google.com/bigquery/docs/create-cloud-resource-connection](https://cloud.google.com/bigquery/docs/create-cloud-resource-connection) | Configuring Google-managed service accounts for delegated external resource access. |
+| **BigQuery CREATE FUNCTION Statement** | [cloud.google.com/bigquery/docs/reference/standard-sql/data-definition-language#create_function_statement](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-definition-language#create_function_statement) | Standard SQL DDL specification for remote UDFs using `REMOTE WITH CONNECTION`. |
+| **BigQuery User-Defined Functions (UDF)** | [cloud.google.com/bigquery/docs/reference/standard-sql/user-defined-functions](https://cloud.google.com/bigquery/docs/reference/standard-sql/user-defined-functions) | Operational rules, constraints, and syntax for SQL and external UDFs in BigQuery. |
+| **`bq` CLI Command Reference** | [cloud.google.com/bigquery/docs/reference/bq-cli-reference](https://cloud.google.com/bigquery/docs/reference/bq-cli-reference) | Command line parameters for `bq mk --connection`, `bq show`, and query execution. |
 
 ---
 
@@ -49,3 +55,7 @@ This document provides curated links to official Google Cloud documentation, CLI
    - **Idempotent Handlers**: Ensure Firestore trigger handlers check event IDs (`cloudEvent.id`) or mutation timestamps to prevent duplicate state processing during at-least-once deliveries.
 8. **Observability**:
    - Enable Cloud Logging and Cloud Monitoring to track cold starts, CPU/memory saturation, execution latency, and error rates in real time.
+9. **BigQuery Remote Function Optimization & Resilience**:
+   - **Batch Cardinality Enforcement**: Strictly enforce that the HTTP response's `replies` array length matches the inbound `calls` array length in 1:1 positional order.
+   - **Tune `max_batching_rows`**: In BigQuery routine `OPTIONS`, specify `max_batching_rows` (e.g. 500 - 1000) to avoid HTTP timeout errors and stay within memory and payload limits.
+   - **Idempotency & Retry Resilience**: Ensure remote function logic is deterministic and idempotent, as BigQuery query workers can retry failed row batches during network hiccups.

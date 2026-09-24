@@ -17,7 +17,9 @@ gcloud services enable \
   artifactregistry.googleapis.com \
   eventarc.googleapis.com \
   logging.googleapis.com \
-  storage.googleapis.com
+  storage.googleapis.com \
+  bigquery.googleapis.com \
+  bigqueryconnection.googleapis.com
 ```
 
 ---
@@ -943,4 +945,170 @@ functions.http('processPayment', (req, res) => {
 | `PermissionDenied: Access denied to secret [SECRET_NAME]` | Container failed to start because runtime service account lacks access to the secret in Secret Manager. | Grant `roles/secretmanager.secretAccessor` on the secret to the runtime service account: `gcloud secrets add-iam-policy-binding <SECRET> --member="serviceAccount:<SA>" --role="roles/secretmanager.secretAccessor"`. |
 | `Secret file not found: /etc/secrets/api_key.txt` | Application code attempts to read volume secret path before mount is established or mount path was mistyped in `--set-secrets`. | Verify that the path in `--set-secrets=/mount/path=SECRET:VERSION` matches the path opened in runtime code. |
 | `Cross-project secret access failed (HTTP 403)` | Runtime SA in project A was not granted `roles/secretmanager.secretAccessor` in foreign project B where secret resides. | Bind the role in the foreign project: `gcloud secrets add-iam-policy-binding <SEC> --project=<PROJ_B> --member="serviceAccount:<SA_FROM_PROJ_A>" --role="roles/secretmanager.secretAccessor"`. |
+| `Access Denied: Service account service-NUM@gcp-sa-bigqueryconnection... does not have permission to invoke function` | The BigQuery connection service agent lacks invoker permissions on the target Cloud Run function. | For Gen 2: Grant `roles/run.invoker` via `gcloud run services add-iam-policy-binding`. For Gen 1: Grant `roles/cloudfunctions.invoker` via `gcloud functions add-iam-policy-binding`. |
+| `Access Denied: User does not have bigquery.connections.use permission on connection` | The user or service account executing the BigQuery query lacks permission to utilize the `CLOUD_RESOURCE` connection. | Grant `roles/bigquery.connectionUser` on the connection to the querying identity via `gcloud projects add-iam-policy-binding` or `bq add-iam-policy-binding`. |
+| `Remote function response format error: expected 'replies' array matching 'calls' length` | Cloud Run function returned a malformed response, or the number of rows in `replies` did not match `calls`. | Ensure function returns `{ "replies": [...] }` where `replies.length === calls.length` and array elements map 1:1 to input row order. |
+
+---
+
+## 11. BigQuery Remote Functions CLI & SQL Management Reference
+
+A complete operations reference for establishing direct SQL integration between **BigQuery** and **Cloud Run Functions** via `CLOUD_RESOURCE` connections.
+
+### 11.1 Prerequisites & API Enablement
+```bash
+# Enable BigQuery Connection API and BigQuery API
+gcloud services enable \
+  bigqueryconnection.googleapis.com \
+  bigquery.googleapis.com
+```
+
+### 11.2 Creating & Managing BigQuery Connections (`bq` CLI)
+
+#### Create a `CLOUD_RESOURCE` Connection
+```bash
+# Create connection in US multi-region
+bq mk --connection \
+  --display_name='analytics-enrichment-conn' \
+  --connection_type=CLOUD_RESOURCE \
+  --project_id=my_project_id \
+  --location=US \
+  my-connection
+```
+
+#### Inspect Connection & Extract Auto-Provisioned Service Account
+```bash
+# Describe connection details to extract the serviceAccountId
+bq show --location=US --connection my_project_id:my-connection
+
+# Alternatively, extract only the service account email using python/jq
+bq show --format=json --location=US --connection my_project_id:my-connection | \
+  python3 -c "import sys, json; print(json.load(sys.stdin)['cloudResource']['serviceAccountId'])"
+```
+
+#### List All Connections in a Location
+```bash
+# List all active connections in the US location
+bq ls --connection --location=US
+```
+
+#### Delete a Connection
+```bash
+# Delete connection if decommissioning
+bq rm --connection --location=US my_project_id:my-connection
+```
+
+---
+
+### 11.3 Service Account Authorization (`roles/run.invoker`)
+
+Grant the connection service account permission to invoke the HTTP Cloud Run function.
+
+#### For Cloud Run Functions (2nd Gen)
+```bash
+# Authorize BigQuery Connection SA on the 2nd gen Cloud Run service
+gcloud run services add-iam-policy-binding function_name \
+  --region=us-east1 \
+  --member="serviceAccount:service-123456789012@gcp-sa-bigqueryconnection.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
+```
+
+#### For Cloud Run Functions (1st Gen)
+```bash
+# Authorize BigQuery Connection SA on 1st gen function
+gcloud functions add-iam-policy-binding function_name \
+  --region=us-east1 \
+  --member="serviceAccount:service-123456789012@gcp-sa-bigqueryconnection.iam.gserviceaccount.com" \
+  --role="roles/cloudfunctions.invoker"
+```
+
+---
+
+### 11.4 Granting User / Analyst Query Permissions
+
+To execute queries referencing remote functions, analysts require read access to the dataset and usage rights on the connection:
+
+```bash
+# Grant connection usage role to analyst identity or group
+gcloud projects add-iam-policy-binding my_project_id \
+  --member="user:analyst@example.com" \
+  --role="roles/bigquery.connectionUser"
+
+# Grant dataset viewer role to analyst
+gcloud projects add-iam-policy-binding my_project_id \
+  --member="user:analyst@example.com" \
+  --role="roles/bigquery.dataViewer"
+```
+
+---
+
+### 11.5 BigQuery SQL Remote Function DDL
+
+#### Create or Replace Remote Function Routine
+```bash
+bq query --use_legacy_sql=false \
+"CREATE OR REPLACE FUNCTION my_project_id.my_dataset.function_name(x INT64, y INT64) 
+RETURNS INT64 
+REMOTE WITH CONNECTION \`my_project_id.US.my-connection\` 
+OPTIONS (
+  endpoint = 'https://us-east1-my_gcf_project.cloudfunctions.net/function_name',
+  max_batching_rows = 1000
+);"
+```
+
+#### Routine Options Reference
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `endpoint` | `STRING` | **Required** | The HTTPS endpoint URL of the deployed Cloud Run function. |
+| `max_batching_rows` | `INT64` | `1000` | Maximum number of rows BigQuery will batch into a single HTTP POST request to avoid timeout/payload limits. |
+| `user_defined_context`| `ARRAY<STRUCT<STRING, STRING>>` | `[]` | Key-value metadata pairs passed in the `userDefinedContext` JSON field with every batch request. |
+
+---
+
+### 11.6 Invoking Remote Functions in Google Standard SQL
+
+#### Scalar Row Transformation Query
+```bash
+bq query --use_legacy_sql=false \
+"SELECT 
+  val, 
+  my_project_id.my_dataset.function_name(val, 2) AS f0_ 
+FROM UNNEST([NULL, 2, 3, 5, 8]) AS val;"
+```
+
+#### Query Execution Output
+```text
++------+-----+
+| val  | f0_ |
++------+-----+
+| NULL |   2 |
+|    2 |   4 |
+|    3 |   5 |
+|    5 |   7 |
+|    8 |  10 |
++------+-----+
+```
+
+#### Table-Level Enrichment Query Example
+```sql
+SELECT 
+  order_id,
+  customer_id,
+  raw_amount,
+  my_project_id.my_dataset.calculate_tax(raw_amount, state_code) AS tax_amount
+FROM 
+  `my_project_id.my_dataset.orders`
+WHERE 
+  order_date >= '2026-01-01';
+```
+
+---
+
+### 11.7 Official Documentation & Further Reading
+* [Google Cloud BigQuery: Work with remote functions](https://cloud.google.com/bigquery/docs/remote-functions)
+* [Google Cloud BigQuery: Remote functions tutorial](https://cloud.google.com/bigquery/docs/remote-functions-tutorial)
+* [Google Cloud BigQuery: Create cloud resource connections](https://cloud.google.com/bigquery/docs/create-cloud-resource-connection)
+* [Google Cloud BigQuery: Standard SQL CREATE FUNCTION DDL](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-definition-language#create_function_statement)
+* [Google Cloud BigQuery: User-defined functions guide](https://cloud.google.com/bigquery/docs/reference/standard-sql/user-defined-functions)
+* [Google Cloud SDK: bq command-line tool reference](https://cloud.google.com/bigquery/docs/reference/bq-cli-reference)
 
