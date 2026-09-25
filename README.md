@@ -85,7 +85,7 @@ gcd/
 │   ├── security-and-iam.md           # Zero-Trust Security, OIDC Auth, IAM & VPC-SC Perimeters
 │   ├── decision-tree.md              # Source Location & Deployment Tooling Decision Trees
 │   ├── shell-commands.md             # In-Depth CLI Manual & Error Matrix (`gcloud functions`)
-│   └── references.md                 # Official Cloud Run Functions Documentation Links
+│   └── references.md                 # Official Cloud Run Functions Documentation Links & Best Practices
 │
 ├── pubsub/                           # Feature 10: Google Cloud Pub/Sub (Enterprise Messaging)
 │   ├── README.md                     # Pub/Sub Feature Index

@@ -411,6 +411,61 @@ For deeper architectural specifications, refer to the official Google Cloud guid
 
 ---
 
+### 3.6 Event-Driven Retries on Failure & Infinite Loop Prevention
+
+When implementing event-driven Cloud Run functions (Pub/Sub, Cloud Storage, Firestore), processing can occasionally fail due to transient downstream issues (network drops, rate limits, momentary database deadlocks) or permanent code bugs.
+
+#### Core Failure & Retry Rules
+
+1. **Trigger Scope**: Automatic retries are available **strictly for event-driven functions**. Direct HTTP functions do not have automatic platform retries (the HTTP client/caller is responsible for retry logic).
+2. **Default State**: Retries are **disabled by default**. When an unhandled error or rejected promise occurs, the function terminates and the event is dropped.
+3. **Enabling Retries**: You must explicitly enable retries during deployment using the `--retry` CLI flag or by selecting the **Retry on failure** option in the Google Cloud Console:
+   ```bash
+   gcloud functions deploy file-processor \
+     --gen2 \
+     --trigger-bucket=my-ingest-bucket \
+     --retry
+   ```
+4. **Retry Window & Exponential Backoff**: Once `--retry` is enabled, failed events are retried repeatedly with exponential backoff for up to **7 days** (or until the function returns successfully).
+5. **Transient vs. Non-Transient Failures**:
+   - **Transient (Retries Settle)**: Network partition, downstream 503, database connection pool exhaustion.
+   - **Non-Transient / Bugs (Infinite Loop Hazard)**: Null pointer exceptions, syntax errors, invalid data formats. A permanent code bug will retry continuously for 7 days, resulting in runaway Cloud Run execution costs.
+
+#### Infinite Retry Loop Prevention Pattern (Event Timestamp Cutoff)
+
+To guard against runaway billing from permanent bugs or poison-pill events, inspect the CloudEvent timestamp (`cloudEvent.time`) at the start of the handler. If the event age exceeds a configured threshold, discard the event immediately:
+
+```typescript
+import * as functions from '@google-cloud/functions-framework';
+import type { CloudEvent } from '@google-cloud/functions-framework';
+
+functions.cloudEvent('processStorageEvent', async (cloudEvent: CloudEvent<any>) => {
+  const eventTime = new Date(cloudEvent.time || '').getTime();
+  const currentTime = Date.now();
+  const MAX_EVENT_AGE_MS = 60 * 1000; // 60-second cutoff threshold
+
+  // Defense against infinite retry loops
+  if (currentTime - eventTime > MAX_EVENT_AGE_MS) {
+    console.warn(`[DROP] Discarding expired event ${cloudEvent.id} created at ${cloudEvent.time}`);
+    return; // Returning acknowledges the event, successfully breaking the retry loop
+  }
+
+  // Business logic: only transient failures should throw to trigger backoff retries
+  try {
+    await processData(cloudEvent.data);
+  } catch (err: any) {
+    if (isTransient(err)) {
+      throw err; // Signals Eventarc to retry with exponential backoff
+    } else {
+      console.error(`[PERMANENT BUG] Event ${cloudEvent.id} failed non-transiently. Dropping:`, err);
+      return; // Acknowledge to prevent infinite 7-day loop
+    }
+  }
+});
+```
+
+---
+
 ## 4. Connecting Cloud Run Functions to Virtual Private Cloud (VPC)
 
 By default, Cloud Run functions run in an isolated multi-tenant network managed by Google, sending all outbound traffic over the public internet. To securely communicate with private enterprise resources (Cloud SQL, Memorystore Redis, private GKE microservices, or on-premises systems via Interconnect/VPN), configure **VPC Egress** and **Ingress Controls**.

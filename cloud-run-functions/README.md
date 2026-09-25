@@ -14,7 +14,7 @@ Welcome to the dedicated documentation index for **Google Cloud Run Functions** 
 | **Triggers, VPC & Workflows** | [`triggers-vpc-workflows.md`](./triggers-vpc-workflows.md) | In-depth manual covering HTTP and 90+ Eventarc event triggers (Pub/Sub, Storage, Firestore Native mode document triggers, Firebase, BigQuery Remote Functions SQL integration), Memorystore Redis integration via Serverless VPC Access, 1:1 trigger binding vs 1:N fanout, VPC Ingress/Egress, and Google Cloud Workflows orchestration. |
 | **Security, IAM & Zero-Trust** | [`security-and-iam.md`](./security-and-iam.md) | Comprehensive security guide covering Identity-Based vs Network-Based controls, OAuth 2.0 vs OIDC ID tokens, Service-to-Service authentication, Runtime Service Accounts, Customer-Managed Encryption Keys (CMEK) via Cloud KMS, and VPC Service Controls (VPC-SC). |
 | **Case Studies & Hands-On Labs** | [`casestudy/README.md`](./casestudy/README.md) | End-to-end hands-on lab blueprint covering HTTP functions, Cloud Storage event triggers via Eventarc, Functions Framework unit testing with Mocha/Sinon, and immutable revision traffic management. |
-| **Official References** | [`references.md`](./references.md) | Official Google Cloud Run Functions documentation links, Cloud Buildpack specs, Eventarc integrations, IAM security guides, and runtime lifecycle references. |
+| **Official References & Best Practices** | [`references.md`](./references.md) | Official Google Cloud Run Functions documentation links, Cloud Buildpack specs, Eventarc integrations, IAM security guides, and comprehensive production best practices guide (idempotency, performance, networking, retries, and scaling). |
 
 ---
 
