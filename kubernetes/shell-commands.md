@@ -1054,3 +1054,308 @@ When workloads fail, use this quick reference to identify root causes and run di
 | **RBAC**   | **`403 Forbidden (API Server)`** | Kubeconfig token expired or missing Role / RoleBinding | `kubectl auth can-i VERB RESOURCE -n NS` | Grant missing RBAC permission via RoleBinding or refresh cloud credentials. |
 | **Drain**  | **`Cannot evict pod: PDB violation`** | PodDisruptionBudget minimum available pods violated | `kubectl get pdb -A` | Safe force drain: `kubectl drain NODE --ignore-daemonsets --delete-emptydir-data --force`. |
 | **Taint**  | **`TaintTolerationMismatch`** | Pod lacks toleration matching the node's taint | `kubectl describe node NODE \| grep Taints` | Add matching `tolerations:` block in Pod YAML. |
+
+---
+
+## 23. Generative AI & LLM Inference on GKE (NVIDIA L4 GPU, Hugging Face TGI & Gradio)
+
+This section details the complete enterprise operational workflow for deploying and serving open-source Large Language Models (such as **Google Gemma 2B**, **Gemma 7B**, and **Falcon 7B/40B**) on Google Kubernetes Engine (GKE) accelerated by **NVIDIA L4 Tensor Core GPUs** using the **Hugging Face Text Generation Inference (TGI)** toolkit and an interactive **Gradio** web chat interface.
+
+```mermaid
+graph TD
+    classDef client fill:#1E293B,stroke:#94A3B8,stroke-width:2px,color:#F8FAFC;
+    classDef svc fill:#064E3B,stroke:#34D399,stroke-width:2px,color:#F8FAFC;
+    classDef app fill:#1E1B4B,stroke:#818CF8,stroke-width:2px,color:#F8FAFC;
+    classDef gpu fill:#7F1D1D,stroke:#F87171,stroke-width:2px,color:#F8FAFC;
+    classDef secret fill:#78350F,stroke:#FBBF24,stroke-width:2px,color:#F8FAFC;
+    classDef mon fill:#312E81,stroke:#C7D2FE,stroke-width:2px,color:#F8FAFC;
+
+    User["User Browser / Client"]:::client
+    GradioLB["Gradio Service<br/>(TCP LoadBalancer External IP)"]:::svc
+    GradioPod["Gradio Web App Pod<br/>(Python Chat Interface)"]:::app
+    LLMService["llm-service:8080<br/>(ClusterIP / Internal LB)"]:::svc
+    
+    subgraph GKENodeTier ["GKE Worker Node (G2 Machine with NVIDIA L4 GPU)"]
+        TGIPod["TGI Serving Pod<br/>(Hugging Face TGI Container)"]:::gpu
+        NVIDIAGPU["NVIDIA L4 GPU<br/>(24GB VRAM Acceleration)"]:::gpu
+        DSHM["/dev/shm (POSIX Shared Memory)<br/>RAM-backed emptyDir"]:::gpu
+    end
+
+    HFSecret["Kubernetes Secret<br/>(hf-secret: HF_TOKEN)"]:::secret
+    GMP["Google Cloud Managed Prometheus<br/>(PodMonitoring 30s Scrape)"]:::mon
+
+    User -->|HTTP Port 80 / 7860| GradioLB
+    GradioLB --> GradioPod
+    GradioPod -->|POST /generate JSON| LLMService
+    LLMService --> TGIPod
+    TGIPod --> NVIDIAGPU
+    TGIPod --- DSHM
+    HFSecret -.->|Injects Token| TGIPod
+    GMP -.->|Scrapes /metrics on :8080| TGIPod
+```
+
+---
+
+### 23.1 Authentication & Environment Setup
+
+```bash
+# 1. Verify active Google Cloud identity
+gcloud auth list
+
+# 2. Verify active project ID
+gcloud config list project
+
+# 3. Export target region and Hugging Face API access token
+# Obtain read-access token from: https://huggingface.co/settings/tokens
+export REGION="us-central1"
+export CLUSTER_NAME="ml-cluster"
+export HF_TOKEN="hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# 4. Clone reference repository
+git clone https://github.com/gke-demos/serving-gemma-2b.git
+cd serving-gemma-2b
+ls -la *.yaml
+```
+
+---
+
+### 23.2 GKE Cluster Provisioning with NVIDIA L4 GPUs
+
+#### Option A: GKE Autopilot (Zero-Touch GPU Driver Management — Recommended)
+In GKE Autopilot, requesting `nvidia.com/gpu: 1` automatically provisions a G2 machine type with NVIDIA L4 and injects the proprietary NVIDIA driver daemon automatically.
+
+```bash
+gcloud container clusters create-auto ${CLUSTER_NAME} \
+  --region=${REGION} \
+  --release-channel=rapid
+```
+
+#### Option B: GKE Standard Cluster with Dedicated G2/L4 Node Pool
+
+```bash
+# 1. Create standard GKE cluster control plane
+gcloud container clusters create ${CLUSTER_NAME} \
+  --region=${REGION} \
+  --release-channel=rapid \
+  --num-nodes=1
+
+# 2. Provision dedicated GPU node pool with NVIDIA L4
+gcloud container node-pools create l4-gpu-pool \
+  --cluster=${CLUSTER_NAME} \
+  --region=${REGION} \
+  --machine-type=g2-standard-4 \
+  --accelerator=type=nvidia-l4,count=1,gpu-driver-version=default \
+  --num-nodes=1 \
+  --min-nodes=0 \
+  --max-nodes=3 \
+  --enable-autoscaling
+```
+
+```bash
+# 3. Connect kubectl to cluster
+gcloud container clusters get-credentials ${CLUSTER_NAME} --region=${REGION}
+```
+
+---
+
+### 23.3 Hugging Face Secret Provisioning
+
+Gemma and gated open models require an authenticated Hugging Face token to download model weights from the Hugging Face Hub during container initialization.
+
+```bash
+# Create Kubernetes secret securely using client-side dry run
+kubectl create secret generic hf-secret \
+  --from-literal=hf_api_token=${HF_TOKEN} \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+---
+
+### 23.4 Declarative Manifests
+
+#### 1. TGI LLM Serving Deployment (`gemma-2b-deployment.yaml`)
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gemma-2b-deployment
+  labels:
+    app: gemma-2b
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gemma-2b
+  template:
+    metadata:
+      labels:
+        app: gemma-2b
+    spec:
+      containers:
+        - name: tgi-server
+          image: ghcr.io/huggingface/text-generation-inference:2.4.0
+          env:
+            - name: MODEL_ID
+              value: google/gemma-2b
+            - name: NUM_SHARD
+              value: "1" # Set to "2" or higher when sharding larger models across multiple GPUs
+            - name: PORT
+              value: "8080"
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: hf_api_token
+          resources:
+            requests:
+              cpu: "2"
+              memory: "10Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "4"
+              memory: "14Gi"
+              nvidia.com/gpu: "1" # Mandatory: requests must equal limits for GPUs
+          volumeMounts:
+            - mountPath: /dev/shm
+              name: dshm
+          ports:
+            - containerPort: 8080
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            failureThreshold: 10
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Gi
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-l4
+```
+
+> **Multi-GPU Sharding Note**: For models requiring more than 24GB VRAM (such as **Falcon 40B** or **Llama 70B**), change `nvidia.com/gpu: "2"`, update machine type to `g2-standard-24` (2x L4 GPUs), and set `NUM_SHARD: "2"`. TGI will automatically divide model layers across the GPUs using PyTorch Tensor Parallelism.
+
+#### 2. LLM Serving Service (`gemma-2b-service.yaml`)
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm-service
+  labels:
+    app: gemma-2b
+spec:
+  type: ClusterIP
+  selector:
+    app: gemma-2b
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+```
+
+#### 3. Google Cloud Managed Prometheus Monitoring (`gemma-2b-monitoring.yaml`)
+
+```yaml
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: gemma-2b-monitoring
+spec:
+  selector:
+    matchLabels:
+      app: gemma-2b
+  endpoints:
+    - port: http
+      interval: 30s
+      path: /metrics
+```
+
+#### 4. Gradio Web Chat Frontend Application (`gradio.yaml`)
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gradio
+  labels:
+    app: gradio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gradio
+  template:
+    metadata:
+      labels:
+        app: gradio
+    spec:
+      containers:
+        - name: gradio-app
+          image: us-docker.pkg.dev/google-samples/containers/gke/gradio-chat:v1.0.0
+          env:
+            - name: LLM_URL
+              value: "http://llm-service:8080"
+          ports:
+            - containerPort: 7860
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gradio
+  labels:
+    app: gradio
+spec:
+  type: LoadBalancer
+  selector:
+    app: gradio
+  ports:
+    - port: 80
+      targetPort: 7860
+      protocol: TCP
+```
+
+---
+
+### 23.5 Deployment, Streaming Verification & Health Probes
+
+```bash
+# 1. Deploy TGI Gemma 2B model server
+kubectl apply -f gemma-2b-deployment.yaml
+kubectl apply -f gemma-2b-service.yaml
+kubectl apply -f gemma-2b-monitoring.yaml
+
+# 2. Watch Pod startup and container image / model weight download
+# Note: Initial pull of TGI image (~10GB) and model weights (~4GB) takes 3-7 minutes.
+watch kubectl get pods -l app=gemma-2b
+
+# 3. Stream real-time TGI initialization logs (Wait until you see 'Connected' and 'Ready')
+kubectl logs -f deployment/gemma-2b-deployment -c tgi-server
+
+# 4. Deploy Gradio Chat Frontend
+kubectl apply -f gradio.yaml
+watch kubectl get deployment gradio
+
+# 5. Extract External IP address of Gradio Web Application
+kubectl get service gradio -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+# Open in browser: http://<EXTERNAL_IP>
+
+# 6. Test direct inference endpoint via curl inside the cluster
+kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- \
+  curl -s -X POST http://llm-service:8080/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"inputs":"What are the advantages of GKE for AI workloads?","parameters":{"max_new_tokens":100}}'
+```
+
